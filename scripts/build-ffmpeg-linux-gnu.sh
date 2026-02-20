@@ -33,7 +33,7 @@ cd "${SRC_DIR}"
 ./configure \
   --prefix="${PREFIX_DIR}" \
   --enable-ffmpeg \
-  --disable-ffprobe \
+  --enable-ffprobe \
   --disable-ffplay \
   --disable-doc \
   --disable-debug \

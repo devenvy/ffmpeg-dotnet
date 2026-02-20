@@ -28,7 +28,7 @@ cd "${SRC_DIR}"
   --target-os=mingw32 \
   --arch=x86_64 \
   --enable-ffmpeg \
-  --disable-ffprobe \
+  --enable-ffprobe \
   --disable-ffplay \
   --disable-doc \
   --disable-debug \
