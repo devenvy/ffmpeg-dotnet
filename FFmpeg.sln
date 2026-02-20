@@ -4,10 +4,15 @@ VisualStudioVersion = 18.1.11312.151
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8A23B2B1-52DE-42D6-B89B-EC2D31EF1A38}"
 	ProjectSection(SolutionItems) = preProject
+		.gitattributes = .gitattributes
+		.gitignore = .gitignore
+		scripts\build-ffmpeg-linux-gnu.sh = scripts\build-ffmpeg-linux-gnu.sh
+		scripts\build-ffmpeg-linux-musl.sh = scripts\build-ffmpeg-linux-musl.sh
+		scripts\build-ffmpeg-msys2.sh = scripts\build-ffmpeg-msys2.sh
 		.github\workflows\build-pack-publish.yml = .github\workflows\build-pack-publish.yml
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Binaries", "src\Binaries\Binaries.csproj", "{9C2CF2AA-D82A-FED5-86E3-1793E70A39A5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Binaries.LGPL", "src\Binaries.LGPL\Binaries.LGPL.csproj", "{476584F2-6958-1734-F448-381B7E77353B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,10 +20,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{9C2CF2AA-D82A-FED5-86E3-1793E70A39A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9C2CF2AA-D82A-FED5-86E3-1793E70A39A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9C2CF2AA-D82A-FED5-86E3-1793E70A39A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9C2CF2AA-D82A-FED5-86E3-1793E70A39A5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{476584F2-6958-1734-F448-381B7E77353B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{476584F2-6958-1734-F448-381B7E77353B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{476584F2-6958-1734-F448-381B7E77353B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{476584F2-6958-1734-F448-381B7E77353B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

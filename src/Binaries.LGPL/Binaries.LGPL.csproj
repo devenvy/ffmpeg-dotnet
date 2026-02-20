@@ -19,5 +19,7 @@
 		<None Include="README.md" Pack="true" PackagePath="/" />
 		<None Include="THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="/" />
 		<None Include="runtimes\**\*" Pack="true" PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)" />
+		<None Include="build\**\*" Pack="true" PackagePath="build/" />
+		<None Include="build\**\*" Pack="true" PackagePath="buildTransitive/" />
 	</ItemGroup>
 </Project>
