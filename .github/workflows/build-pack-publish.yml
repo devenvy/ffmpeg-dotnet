@@ -1,0 +1,209 @@
+name: Build, Pack, and Publish FFmpeg NuGet
+
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: "FFmpeg version (for example: 7.1.3)"
+        required: true
+        default: "7.1.3"
+      package_version:
+        description: "NuGet package version (for example: 1.0.0)"
+        required: true
+      publish:
+        description: "Publish to Github Packages"
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ (github.head_ref || github.ref_name) != 'main' }}
+
+env:
+  DOTNET_NOLOGO: true
+  PACKAGE_PROJECT: Binaries.LGPL/Binaries.LGPL.csproj
+  PACKAGE_ID: DevEnvy.FFmpeg.Binaries.LGPL
+
+jobs:
+  resolve-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      ffmpeg_version: ${{ steps.set.outputs.ffmpeg_version }}
+      release_version: ${{ steps.set.outputs.release_version }}
+      assembly_version: ${{ steps.set.outputs.assembly_version }}
+      publish: ${{ steps.set.outputs.publish }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "ffmpeg_version=${{ github.event.inputs.ffmpeg_version }}" >> "$GITHUB_OUTPUT"
+            VERSION="${{ github.event.inputs.package_version }}"
+            echo "publish=${{ github.event.inputs.publish }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+            echo "ffmpeg_version=7.1.3" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          MAJOR_VERSION="${VERSION%%.*}"
+          echo "assembly_version=${MAJOR_VERSION}.0.0.0" >> "$GITHUB_OUTPUT"
+
+  build-linux-gnu:
+    runs-on: ubuntu-latest
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FFmpeg (linux-x64, glibc)
+        shell: bash
+        run: |
+          chmod +x scripts/build-ffmpeg-linux-gnu.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            scripts/build-ffmpeg-linux-gnu.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-native
+          path: artifacts/linux-x64/native
+          if-no-files-found: error
+
+  build-linux-musl:
+    runs-on: ubuntu-latest
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FFmpeg (linux-musl-x64, Alpine)
+        shell: bash
+        run: |
+          docker run --rm \
+            -e FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            -v "${{ github.workspace }}:/work" \
+            alpine:3.20 \
+            sh /work/scripts/build-ffmpeg-linux-musl.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-musl-x64-native
+          path: artifacts/linux-musl-x64/native
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            diffutils
+            make
+            mingw-w64-x86_64-toolchain
+            nasm
+            pkgconf
+            yasm
+      - name: Build FFmpeg (win-x64, mingw)
+        shell: msys2 {0}
+        run: |
+          chmod +x scripts/build-ffmpeg-msys2.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            scripts/build-ffmpeg-msys2.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-x64-native
+          path: artifacts/win-x64/native
+          if-no-files-found: error
+
+  pack:
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-versions
+      - build-linux-gnu
+      - build-linux-musl
+      - build-windows
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64-native
+          path: src/Binaries.LGPL/runtimes/linux-x64/native
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-musl-x64-native
+          path: src/Binaries.LGPL/runtimes/linux-musl-x64/native
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-x64-native
+          path: src/Binaries.LGPL/runtimes/win-x64/native
+
+      - name: Pack NuGet
+        shell: bash
+        run: |
+          dotnet pack "${PACKAGE_PROJECT}" \
+            -c Release \
+            -p:Version="${{ needs.resolve-versions.outputs.release_version }}" \
+            -p:PackageVersion="${{ needs.resolve-versions.outputs.release_version }}" \
+            -p:AssemblyVersion="${{ needs.resolve-versions.outputs.assembly_version }}" \
+            -p:FileVersion="${{ needs.resolve-versions.outputs.release_version }}" \
+            -o out
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget
+          path: out/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-versions
+      - pack
+    permissions:
+      contents: read
+      id-token: write  # enable GitHub OIDC token issuance for this job
+    if: needs.resolve-versions.outputs.publish == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: out
+
+      # Get a short-lived NuGet API key
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+    
+      # Push the package
+      - name: NuGet push
+        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
+
+      - name: Publish to Github Packages
+        shell: bash
+        run: |
+          dotnet nuget push "out/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{steps.login.outputs.NUGET_API_KEY}}" \
+            --timeout 1200 \
+            --skip-duplicate
