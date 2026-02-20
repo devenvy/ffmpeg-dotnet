@@ -12,7 +12,7 @@ namespace Binaries.LGPL
         /// Gets the path to the FFmpeg native libraries based on the current runtime identifier (RID).
         /// Falls back to the application base directory for RID-specific publish layouts.
         /// </summary>
-        public static string GetPath()
+        public static string GetLibraryPath()
         {
             var rid = GetRuntimeIdentifier();
             var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native");
@@ -22,6 +22,24 @@ namespace Binaries.LGPL
                 nativePath = AppContext.BaseDirectory;
 
             return nativePath;
+        }
+
+        /// <summary>
+        /// Gets the full path to the ffmpeg executable.
+        /// </summary>
+        public static string GetFFmpegPath()
+        {
+            var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffmpeg.exe" : "ffmpeg";
+            return Path.Combine(GetLibraryPath(), name);
+        }
+
+        /// <summary>
+        /// Gets the full path to the ffprobe executable.
+        /// </summary>
+        public static string GetFFprobePath()
+        {
+            var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffprobe.exe" : "ffprobe";
+            return Path.Combine(GetLibraryPath(), name);
         }
 
         private static string GetRuntimeIdentifier()
