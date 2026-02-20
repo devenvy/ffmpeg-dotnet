@@ -25,7 +25,7 @@ concurrency:
 
 env:
   DOTNET_NOLOGO: true
-  PACKAGE_PROJECT: Binaries.LGPL/Binaries.LGPL.csproj
+  PACKAGE_PROJECT: src/Binaries.LGPL/Binaries.LGPL.csproj
   PACKAGE_ID: DevEnvy.FFmpeg.Binaries.LGPL
 
 jobs:
@@ -197,13 +197,4 @@ jobs:
     
       # Push the package
       - name: NuGet push
-        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
-
-      - name: Publish to Github Packages
-        shell: bash
-        run: |
-          dotnet nuget push "out/*.nupkg" \
-            --source https://api.nuget.org/v3/index.json \
-            --api-key "${{steps.login.outputs.NUGET_API_KEY}}" \
-            --timeout 1200 \
-            --skip-duplicate
+        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --timeout 1200
