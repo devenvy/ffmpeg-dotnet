@@ -161,17 +161,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: linux-x64-native
-          path: src/Binaries.LGPL/runtimes/linux-x64/native
+          path: src/Binaries.LGPL/runtimes/linux-x64
 
       - uses: actions/download-artifact@v4
         with:
           name: linux-musl-x64-native
-          path: src/Binaries.LGPL/runtimes/linux-musl-x64/native
+          path: src/Binaries.LGPL/runtimes/linux-musl-x64
 
       - uses: actions/download-artifact@v4
         with:
           name: win-x64-native
-          path: src/Binaries.LGPL/runtimes/win-x64/native
+          path: src/Binaries.LGPL/runtimes/win-x64
 
       - name: Pack NuGet
         shell: bash

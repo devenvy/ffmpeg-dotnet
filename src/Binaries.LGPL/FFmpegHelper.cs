@@ -15,7 +15,7 @@ namespace Binaries.LGPL
         public static string GetLibraryPath()
         {
             var rid = GetRuntimeIdentifier();
-            var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native");
+            var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid);
 
             // Fall back to base directory (for RID-specific publish)
             if (!Directory.Exists(nativePath))
