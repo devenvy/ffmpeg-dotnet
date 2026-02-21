@@ -60,14 +60,7 @@ jobs:
     needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
-      - name: Cache FFmpeg (linux-x64)
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: artifacts/linux-x64/native
-          key: ffmpeg-linux-x64-${{ needs.resolve-versions.outputs.ffmpeg_version }}-${{ hashFiles('scripts/build-ffmpeg-linux-gnu.sh') }}
       - name: Build FFmpeg (linux-x64, glibc)
-        if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           chmod +x scripts/build-ffmpeg-linux-gnu.sh
@@ -84,14 +77,7 @@ jobs:
     needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
-      - name: Cache FFmpeg (linux-musl-x64)
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: artifacts/linux-musl-x64/native
-          key: ffmpeg-linux-musl-x64-${{ needs.resolve-versions.outputs.ffmpeg_version }}-${{ hashFiles('scripts/build-ffmpeg-linux-musl.sh') }}
       - name: Build FFmpeg (linux-musl-x64, Alpine)
-        if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           docker run --rm \
@@ -110,14 +96,7 @@ jobs:
     needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
-      - name: Cache FFmpeg (win-x64)
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: artifacts/win-x64/native
-          key: ffmpeg-win-x64-${{ needs.resolve-versions.outputs.ffmpeg_version }}-${{ hashFiles('scripts/build-ffmpeg-msys2.sh') }}
       - uses: msys2/setup-msys2@v2
-        if: steps.cache.outputs.cache-hit != 'true'
         with:
           msystem: MINGW64
           update: true
@@ -130,7 +109,6 @@ jobs:
             pkgconf
             yasm
       - name: Build FFmpeg (win-x64, mingw)
-        if: steps.cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
           chmod +x scripts/build-ffmpeg-msys2.sh
