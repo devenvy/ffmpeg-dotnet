@@ -1,7 +1,12 @@
 <Project>
-  <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)..\runtimes\**\*"
-          Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <Target Name="CopyFFmpegNativeLibs" AfterTargets="Build">
+    <ItemGroup>
+      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\*" RID="linux-x64" />
+      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-musl-x64\*" RID="linux-musl-x64" />
+      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\*" RID="win-x64" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_FFmpegNativeFiles)"
+          DestinationFiles="@(_FFmpegNativeFiles->'$(OutDir)runtimes\%(RID)\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
