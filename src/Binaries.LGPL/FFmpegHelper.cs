@@ -1,10 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FFmpeg.AutoGen.Abstractions;
+using FFmpeg.AutoGen.Bindings.DynamicallyLoaded;
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 
-namespace Binaries.LGPL
+namespace DevEnvy.Binaries.LGPL
 {
     public static class FFmpegBinaries
     {
@@ -40,6 +40,33 @@ namespace Binaries.LGPL
         {
             var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffprobe.exe" : "ffprobe";
             return Path.Combine(GetLibraryPath(), name);
+        }
+
+        /// <summary>
+        /// Register FFMPEG binaries.
+        /// </summary>
+        public static void RegisterFFmpegBinaries()
+        {
+            DynamicallyLoadedBindings.LibrariesPath = GetLibraryPath();
+            DynamicallyLoadedBindings.Initialize();
+
+            var ffmpegLogLevelStr = Environment.GetEnvironmentVariable("FFMPEG_LOG_LEVEL");
+
+            int ffmpegLogLevel = ffmpegLogLevelStr?.ToUpper() switch
+            {
+                "QUIET" => ffmpeg.AV_LOG_QUIET,
+                "PANIC" => ffmpeg.AV_LOG_PANIC,
+                "FATAL" => ffmpeg.AV_LOG_FATAL,
+                "ERROR" => ffmpeg.AV_LOG_ERROR,
+                "WARNING" => ffmpeg.AV_LOG_WARNING,
+                "INFO" => ffmpeg.AV_LOG_INFO,
+                "VERBOSE" => ffmpeg.AV_LOG_VERBOSE,
+                "DEBUG" => ffmpeg.AV_LOG_DEBUG,
+                "TRACE" => ffmpeg.AV_LOG_TRACE,
+                _ => ffmpeg.AV_LOG_QUIET,
+            };
+
+            ffmpeg.av_log_set_level(ffmpegLogLevel);
         }
 
         private static string GetRuntimeIdentifier()

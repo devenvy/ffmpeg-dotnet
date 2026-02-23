@@ -23,4 +23,8 @@
 		<None Include="build\**\*" Pack="true" PackagePath="build/" />
 		<None Include="build\**\*" Pack="true" PackagePath="buildTransitive/" />
 	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="7.1.1" />
+	</ItemGroup>
 </Project>
