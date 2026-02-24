@@ -15,7 +15,10 @@ namespace DevEnvy.Binaries.LGPL
         public static string GetLibraryPath()
         {
             var rid = GetRuntimeIdentifier();
-            var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid);
+            var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native");
+
+            if (!Directory.Exists(nativePath))
+                nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", rid);
 
             // Fall back to base directory (for RID-specific publish)
             if (!Directory.Exists(nativePath))
