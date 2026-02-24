@@ -17,14 +17,15 @@
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="/" />
 		<None Include="THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="/" />
-		<None Include="runtimes\linux-x64\*" Pack="true" PackagePath="runtimes/linux-x64/" />
-		<None Include="runtimes\linux-musl-x64\*" Pack="true" PackagePath="runtimes/linux-musl-x64/" />
-		<None Include="runtimes\win-x64\*" Pack="true" PackagePath="runtimes/win-x64/" />
-		<None Include="build\**\*" Pack="true" PackagePath="build/" />
-		<None Include="build\**\*" Pack="true" PackagePath="buildTransitive/" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="7.1.1" />
+		<Content Include="ffmpeg\**\*" Pack="true" PackagePath="contentFiles\any\any\ffmpeg" CopyToOutputDirectory="PreserveNewest">
+			<PackageCopyToOutput>true</PackageCopyToOutput>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="7.1.1" />
 	</ItemGroup>
 </Project>

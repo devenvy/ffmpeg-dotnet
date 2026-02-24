@@ -1,12 +1,10 @@
 <Project>
-  <Target Name="CopyFFmpegNativeLibs" AfterTargets="Build">
+  <Target Name="CopyFFmpegBinaries" AfterTargets="Build">
     <ItemGroup>
-      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\*" RID="linux-x64" />
-      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-musl-x64\*" RID="linux-musl-x64" />
-      <_FFmpegNativeFiles Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\*" RID="win-x64" />
+      <_FFmpegFiles Include="$(MSBuildThisFileDirectory)..\ffmpeg\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_FFmpegNativeFiles)"
-          DestinationFiles="@(_FFmpegNativeFiles->'$(OutDir)runtimes\%(RID)\%(Filename)%(Extension)')"
+    <Copy SourceFiles="@(_FFmpegFiles)"
+          DestinationFiles="@(_FFmpegFiles->'$(OutDir)ffmpeg\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>
