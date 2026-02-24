@@ -50,8 +50,6 @@ namespace DevEnvy.Binaries.LGPL
         /// </summary>
         public static void RegisterFFmpegBinaries()
         {
-            EnsureLibraryPath();
-
             DynamicallyLoadedBindings.LibrariesPath = GetLibraryPath();
             DynamicallyLoadedBindings.Initialize();
 
@@ -73,27 +71,6 @@ namespace DevEnvy.Binaries.LGPL
 
             ffmpeg.av_log_set_level(ffmpegLogLevel);
         }
-
-        private static void EnsureLibraryPath()
-        {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return;
-
-            var libraryPath = GetLibraryPath();
-            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-
-            if (!currentPath.StartsWith(libraryPath + ";", StringComparison.OrdinalIgnoreCase)
-                && !currentPath.EndsWith(";" + libraryPath, StringComparison.OrdinalIgnoreCase)
-                && currentPath.IndexOf(";" + libraryPath + ";", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                Environment.SetEnvironmentVariable("PATH", libraryPath + ";" + currentPath);
-            }
-
-            SetDllDirectory(libraryPath);
-        }
-
-        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
-        private static extern bool SetDllDirectory(string? lpPathName);
 
         private static string GetRuntimeIdentifier()
         {

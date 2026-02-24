@@ -23,9 +23,9 @@ mkdir -p "${SRC_DIR}"
 tar -xf ffmpeg.tar.xz -C "${SRC_DIR}" --strip-components=1
 
 cd "${SRC_DIR}"
+
 ./configure \
   --prefix="${PREFIX_DIR}" \
-  --target-os=mingw32 \
   --arch=x86_64 \
   --enable-ffmpeg \
   --enable-ffprobe \
@@ -35,7 +35,9 @@ cd "${SRC_DIR}"
   --enable-shared \
   --disable-static \
   --disable-gpl \
-  --disable-nonfree
+  --disable-nonfree \
+  --disable-w32threads \
+  --disable-autodetect
 
 make -j"$(nproc)"
 make install
@@ -50,5 +52,5 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Configure flags:
---target-os=mingw32 --arch=x86_64 --enable-ffmpeg --enable-ffprobe --disable-ffplay --disable-doc --disable-debug --enable-shared --disable-static --disable-gpl --disable-nonfree
+--arch=x86_64 --enable-ffmpeg --enable-ffprobe --disable-ffplay --disable-doc --disable-debug --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-w32threads --disable-autodetect
 EOF
