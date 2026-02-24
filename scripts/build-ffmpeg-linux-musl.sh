@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
 RID="linux-musl-x64"
 WORKSPACE="${WORKSPACE:-/work}"
 WORK_DIR="${WORKSPACE}/.build/${RID}"

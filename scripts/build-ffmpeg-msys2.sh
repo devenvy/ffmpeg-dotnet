@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
 RID="win-x64"
 RAW_ROOT_DIR="${GITHUB_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 if [[ "${RAW_ROOT_DIR}" =~ ^[A-Za-z]:[\\/] ]]; then
