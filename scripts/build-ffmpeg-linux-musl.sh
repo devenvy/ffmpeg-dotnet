@@ -11,10 +11,10 @@ SRC_DIR="${WORK_DIR}/src"
 PREFIX_DIR="${WORK_DIR}/install"
 OUT_DIR="${ROOT_DIR}/artifacts/${RID}/native"
 
-# Use musl cross-compiler
+# Use musl cross-compiler (no static-pie for shared libs)
 export CC="musl-gcc"
-export CFLAGS="-static-pie -O2 -pipe"
-export LDFLAGS="-static-pie"
+export CFLAGS="-O2 -pipe -fPIC"
+export LDFLAGS=""
 
 mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 
@@ -44,8 +44,7 @@ echo "Configuring FFmpeg..."
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
-  --extra-cflags="${CFLAGS}" \
-  --extra-ldflags="${LDFLAGS}"
+  --extra-cflags="${CFLAGS}"
 
 echo "Building FFmpeg..."
 make -j"$(nproc)"
