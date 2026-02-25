@@ -24,6 +24,7 @@ sudo apt-get install -y --no-install-recommends \
   libtool \
   libva-dev \
   libvdpau-dev \
+  libvpl-dev \
   nasm \
   pkg-config \
   xz-utils \
@@ -78,6 +79,8 @@ echo "Configuring FFmpeg..."
   --enable-vaapi \
   --enable-vdpau \
   --enable-libdrm \
+  --enable-libvpl \
+  --enable-v4l2-m2m \
   --extra-cflags="-I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
@@ -94,9 +97,9 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native Linux glibc (LGPL shared)
-Hardware acceleration: CUDA NVENC NVDEC VAAPI VDPAU libdrm
+Hardware acceleration: CUDA NVENC NVDEC VAAPI VDPAU libdrm QSV V4L2-M2M
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-vdpau --enable-libdrm
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-vdpau --enable-libdrm --enable-libvpl --enable-v4l2-m2m
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

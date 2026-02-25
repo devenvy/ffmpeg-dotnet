@@ -15,9 +15,12 @@ All hardware acceleration is enabled via **compile-time headers only** (MIT-lice
 | Platform | Accelerators |
 |----------|-------------|
 | Windows  | NVENC, NVDEC, CUDA, D3D11VA, DXVA2, AMF, MediaFoundation |
-| Linux (glibc) | NVENC, NVDEC, CUDA, VAAPI, VDPAU |
+| Linux (glibc) | NVENC, NVDEC, CUDA, VAAPI, VDPAU, QSV (libvpl), V4L2 M2M |
 | Linux (musl)  | NVENC, NVDEC, CUDA |
 | macOS    | VideoToolbox, AudioToolbox |
+
+> **Note:** QSV on Windows, RKMPP, and V4L2 on ARM hardware require additional build
+> infrastructure not yet included. See the repository issues for roadmap.
 
 ## Usage
 

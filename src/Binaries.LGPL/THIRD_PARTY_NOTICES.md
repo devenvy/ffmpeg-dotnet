@@ -32,6 +32,17 @@ the actual hardware drivers are loaded at runtime via dlopen / COM / system fram
 - License: MIT
 - Purpose: Compile-time headers for AMD hardware encoding (Windows only)
 
+## Hardware acceleration libraries (runtime dependencies)
+
+The following MIT-licensed libraries are linked dynamically. They are **not bundled** in
+this package — the host system must provide them when the corresponding HW accel is used.
+
+### libvpl (Intel oneVPL)
+- Project: https://github.com/intel/libvpl
+- License: MIT
+- Purpose: Intel Quick Sync Video (QSV) dispatcher for hardware encode/decode (Linux only)
+- Runtime: Requires Intel GPU driver with oneVPL/Media SDK runtime
+
 ## Source and scripts
 
 The build scripts and workflow used to produce these binaries are included in this repository under:
