@@ -40,7 +40,9 @@ echo "Configuring FFmpeg..."
   --enable-version3 \
   --disable-gpl \
   --disable-nonfree \
-  --disable-autodetect
+  --disable-autodetect \
+  --enable-videotoolbox \
+  --enable-audiotoolbox
 
 echo "Building FFmpeg..."
 make -j"$(sysctl -n hw.ncpu)"
@@ -56,8 +58,9 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native macOS (LGPL shared)
+Hardware acceleration: VideoToolbox AudioToolbox
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

@@ -59,7 +59,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            mingw-w64 nasm yasm pkg-config curl xz-utils
+            git mingw-w64 nasm yasm pkg-config curl xz-utils
       - name: Build FFmpeg for Windows
         run: |
           chmod +x scripts/build-ffmpeg-win64.sh
@@ -96,7 +96,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            musl-tools nasm yasm pkg-config curl xz-utils
+            git musl-tools nasm yasm pkg-config curl xz-utils
       - name: Build FFmpeg for Linux (musl)
         run: |
           chmod +x scripts/build-ffmpeg-linux-musl.sh

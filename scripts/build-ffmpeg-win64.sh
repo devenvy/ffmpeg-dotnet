@@ -30,6 +30,31 @@ export LDFLAGS="-static-libgcc -static-libstdc++"
 
 mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 
+DEPS_DIR="${WORK_DIR}/deps"
+mkdir -p "${DEPS_DIR}"
+
+# ── Hardware acceleration headers ──────────────────────────────────────────────
+
+# nv-codec-headers (MIT – compile-time headers for NVENC/NVDEC/CUDA)
+echo "Building nv-codec-headers..."
+cd "${WORK_DIR}"
+rm -rf nv-codec-headers
+git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+cd nv-codec-headers
+make install PREFIX="${DEPS_DIR}"
+
+# AMF headers (MIT – compile-time headers for AMD hardware encoding)
+echo "Installing AMF headers..."
+cd "${WORK_DIR}"
+rm -rf AMF
+git clone --depth 1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
+mkdir -p "${DEPS_DIR}/include/AMF"
+cp -r AMF/amf/public/include/* "${DEPS_DIR}/include/AMF/"
+
+export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# ── FFmpeg ─────────────────────────────────────────────────────────────────────
+
 cd "${WORK_DIR}"
 rm -rf "${SRC_DIR}" "${PREFIX_DIR}"
 
@@ -58,7 +83,16 @@ echo "Configuring FFmpeg..."
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
-  --extra-cflags="${CFLAGS}" \
+  --enable-cuda \
+  --enable-cuvid \
+  --enable-nvenc \
+  --enable-nvdec \
+  --enable-ffnvcodec \
+  --enable-d3d11va \
+  --enable-dxva2 \
+  --enable-amf \
+  --enable-mediafoundation \
+  --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include" \
   --extra-cxxflags="${CXXFLAGS}" \
   --extra-ldflags="${LDFLAGS}"
 
@@ -77,8 +111,9 @@ FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Toolchain: ${CROSS_PREFIX}
 Build type: Cross-compiled from Linux (LGPL shared)
+Hardware acceleration: CUDA NVENC NVDEC D3D11VA DXVA2 AMF MediaFoundation
 Configure flags:
---cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect
+--cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-mediafoundation
 CFLAGS: ${CFLAGS}
 LDFLAGS: ${LDFLAGS}
 EOF

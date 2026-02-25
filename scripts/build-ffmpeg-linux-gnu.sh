@@ -19,11 +19,32 @@ sudo apt-get install -y --no-install-recommends \
   automake \
   build-essential \
   curl \
+  git \
+  libdrm-dev \
   libtool \
+  libva-dev \
+  libvdpau-dev \
   nasm \
   pkg-config \
   xz-utils \
   yasm
+
+DEPS_DIR="${WORK_DIR}/deps"
+mkdir -p "${DEPS_DIR}"
+
+# ?? Hardware acceleration headers ??????????????????????????????????????????????
+
+# nv-codec-headers (MIT – compile-time headers for NVENC/NVDEC/CUDA)
+echo "Building nv-codec-headers..."
+cd "${WORK_DIR}"
+rm -rf nv-codec-headers
+git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+cd nv-codec-headers
+make install PREFIX="${DEPS_DIR}"
+
+export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# ?? FFmpeg ?????????????????????????????????????????????????????????????????????
 
 cd "${WORK_DIR}"
 rm -rf "${SRC_DIR}" "${PREFIX_DIR}"
@@ -49,7 +70,15 @@ echo "Configuring FFmpeg..."
   --enable-version3 \
   --disable-gpl \
   --disable-nonfree \
-  --disable-autodetect
+  --disable-autodetect \
+  --enable-cuda \
+  --enable-cuvid \
+  --enable-nvenc \
+  --enable-nvdec \
+  --enable-ffnvcodec \
+  --enable-vaapi \
+  --enable-vdpau \
+  --extra-cflags="-I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
 make -j"$(nproc)"
@@ -65,8 +94,9 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native Linux glibc (LGPL shared)
+Hardware acceleration: CUDA NVENC NVDEC VAAPI VDPAU
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-vdpau
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
