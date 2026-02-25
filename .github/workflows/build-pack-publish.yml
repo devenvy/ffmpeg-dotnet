@@ -98,17 +98,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: UCRT64
+          msystem: MINGW64
           update: true
           install: >-
             base-devel
             diffutils
             make
-            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-x86_64-toolchain
             nasm
             pkgconf
             yasm
-      - name: Build FFmpeg (win-x64, ucrt64)
+
+      - name: Build FFmpeg (win-x64, mingw64)
         shell: msys2 {0}
         run: |
           chmod +x scripts/build-ffmpeg-msys2.sh
