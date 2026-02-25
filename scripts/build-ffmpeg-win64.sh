@@ -69,6 +69,7 @@ echo "Configuring FFmpeg..."
 ./configure \
   --prefix="${PREFIX_DIR}" \
   --cross-prefix="${CROSS_PREFIX}-" \
+  --pkg-config=pkg-config \
   --arch=x86_64 \
   --target-os=mingw32 \
   --enable-cross-compile \
