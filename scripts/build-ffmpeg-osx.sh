@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build FFmpeg for Linux (glibc) - LGPL shared libraries
+# Build FFmpeg for macOS - LGPL shared libraries
 
 FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
-RID="linux-x64"
+RID="${RID:-osx-x64}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="${ROOT_DIR}/.build/${RID}"
 SRC_DIR="${WORK_DIR}/src"
@@ -13,17 +13,8 @@ OUT_DIR="${ROOT_DIR}/artifacts/${RID}/native"
 
 mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
-  autoconf \
-  automake \
-  build-essential \
-  curl \
-  libtool \
-  nasm \
-  pkg-config \
-  xz-utils \
-  yasm
+# Install build dependencies via Homebrew
+brew install nasm yasm pkg-config || true
 
 cd "${WORK_DIR}"
 rm -rf "${SRC_DIR}" "${PREFIX_DIR}"
@@ -52,19 +43,19 @@ echo "Configuring FFmpeg..."
   --disable-autodetect
 
 echo "Building FFmpeg..."
-make -j"$(nproc)"
+make -j"$(sysctl -n hw.ncpu)"
 make install
 
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
-cp -a "${PREFIX_DIR}/lib/"*.so* "${OUT_DIR}/"
+cp -a "${PREFIX_DIR}/lib/"*.dylib "${OUT_DIR}/"
 cp -a "${PREFIX_DIR}/bin/ffmpeg" "${OUT_DIR}/"
 cp -a "${PREFIX_DIR}/bin/ffprobe" "${OUT_DIR}/"
 
 cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
-Build type: Native Linux glibc (LGPL shared)
+Build type: Native macOS (LGPL shared)
 Configure flags:
 --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect
 EOF

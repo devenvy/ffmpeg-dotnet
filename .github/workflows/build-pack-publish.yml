@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       ffmpeg_version:
-        description: "FFmpeg version (for example: 7.1.1)"
+        description: "FFmpeg version (e.g., 7.1.1)"
         required: true
         default: "7.1.1"
       package_version:
-        description: "NuGet package version (for example: 1.0.0)"
+        description: "NuGet package version (e.g., 1.0.0)"
         required: true
       publish:
-        description: "Publish to Github Packages"
+        description: "Publish to NuGet"
         required: true
         default: false
         type: boolean
@@ -20,13 +20,12 @@ on:
       - "v*"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ (github.head_ref || github.ref_name) != 'main' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_NOLOGO: true
   PACKAGE_PROJECT: src/Binaries.LGPL/Binaries.LGPL.csproj
-  PACKAGE_ID: DevEnvy.FFmpeg.Binaries.LGPL
 
 jobs:
   resolve-versions:
@@ -38,104 +37,130 @@ jobs:
       publish: ${{ steps.set.outputs.publish }}
     steps:
       - id: set
-        shell: bash
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "ffmpeg_version=${{ github.event.inputs.ffmpeg_version }}" >> "$GITHUB_OUTPUT"
             VERSION="${{ github.event.inputs.package_version }}"
             echo "publish=${{ github.event.inputs.publish }}" >> "$GITHUB_OUTPUT"
           else
-            TAG="${GITHUB_REF_NAME}"
-            VERSION="${TAG#v}"
+            VERSION="${GITHUB_REF_NAME#v}"
             echo "ffmpeg_version=7.1.1" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-
           echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
-          MAJOR_VERSION="${VERSION%%.*}"
-          echo "assembly_version=${MAJOR_VERSION}.0.0.0" >> "$GITHUB_OUTPUT"
+          echo "assembly_version=${VERSION%%.*}.0.0.0" >> "$GITHUB_OUTPUT"
 
-  build-linux-gnu:
+  build-win-x64:
     runs-on: ubuntu-latest
     needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
-      - name: Build FFmpeg (linux-x64, glibc)
-        shell: bash
+      - name: Install mingw-w64 cross-compiler
         run: |
-          chmod +x scripts/build-ffmpeg-linux-gnu.sh
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mingw-w64 nasm yasm pkg-config curl xz-utils
+      - name: Build FFmpeg for Windows
+        run: |
+          chmod +x scripts/build-ffmpeg-win64.sh
           FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
-            scripts/build-ffmpeg-linux-gnu.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-x64-native
-          path: artifacts/linux-x64/native
-          if-no-files-found: error
-
-  build-linux-musl:
-    runs-on: ubuntu-latest
-    needs: resolve-versions
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build FFmpeg (linux-musl-x64, Alpine)
-        shell: bash
-        run: |
-          docker run --rm \
-            -e FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
-            -v "${{ github.workspace }}:/work" \
-            alpine:3.20 \
-            sh /work/scripts/build-ffmpeg-linux-musl.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-musl-x64-native
-          path: artifacts/linux-musl-x64/native
-          if-no-files-found: error
-
-  build-windows:
-    runs-on: windows-latest
-    needs: resolve-versions
-    steps:
-      - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel
-            diffutils
-            make
-            mingw-w64-x86_64-toolchain
-            nasm
-            pkgconf
-            yasm
-
-      - name: Build FFmpeg (win-x64, mingw64)
-        shell: msys2 {0}
-        run: |
-          chmod +x scripts/build-ffmpeg-msys2.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
-            scripts/build-ffmpeg-msys2.sh
+            ./scripts/build-ffmpeg-win64.sh
       - uses: actions/upload-artifact@v4
         with:
           name: win-x64-native
           path: artifacts/win-x64/native
           if-no-files-found: error
 
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FFmpeg for Linux (glibc)
+        run: |
+          chmod +x scripts/build-ffmpeg-linux-gnu.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            ./scripts/build-ffmpeg-linux-gnu.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-native
+          path: artifacts/linux-x64/native
+          if-no-files-found: error
+
+  build-linux-musl-x64:
+    runs-on: ubuntu-latest
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install musl cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            musl-tools nasm yasm pkg-config curl xz-utils
+      - name: Build FFmpeg for Linux (musl)
+        run: |
+          chmod +x scripts/build-ffmpeg-linux-musl.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            ./scripts/build-ffmpeg-linux-musl.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-musl-x64-native
+          path: artifacts/linux-musl-x64/native
+          if-no-files-found: error
+
+  build-osx-x64:
+    runs-on: macos-13
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FFmpeg for macOS x64
+        run: |
+          chmod +x scripts/build-ffmpeg-osx.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            RID=osx-x64 \
+            ./scripts/build-ffmpeg-osx.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osx-x64-native
+          path: artifacts/osx-x64/native
+          if-no-files-found: error
+
+  build-osx-arm64:
+    runs-on: macos-14
+    needs: resolve-versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FFmpeg for macOS ARM64
+        run: |
+          chmod +x scripts/build-ffmpeg-osx.sh
+          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+            RID=osx-arm64 \
+            ./scripts/build-ffmpeg-osx.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osx-arm64-native
+          path: artifacts/osx-arm64/native
+          if-no-files-found: error
+
   pack:
     runs-on: ubuntu-latest
     needs:
       - resolve-versions
-      - build-linux-gnu
-      - build-linux-musl
-      - build-windows
-    permissions:
-      contents: read
-      packages: write
+      - build-win-x64
+      - build-linux-x64
+      - build-linux-musl-x64
+      - build-osx-x64
+      - build-osx-arm64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "8.0.x"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-x64-native
+          path: src/Binaries.LGPL/ffmpeg/win-x64
 
       - uses: actions/download-artifact@v4
         with:
@@ -149,20 +174,23 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: win-x64-native
-          path: src/Binaries.LGPL/ffmpeg/win-x64
+          name: osx-x64-native
+          path: src/Binaries.LGPL/ffmpeg/osx-x64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osx-arm64-native
+          path: src/Binaries.LGPL/ffmpeg/osx-arm64
 
       - name: Pack NuGet
-        shell: bash
         run: |
-          dotnet pack "${PACKAGE_PROJECT}" \
+          dotnet pack "$PACKAGE_PROJECT" \
             -c Release \
             -p:Version="${{ needs.resolve-versions.outputs.release_version }}" \
             -p:PackageVersion="${{ needs.resolve-versions.outputs.release_version }}" \
             -p:AssemblyVersion="${{ needs.resolve-versions.outputs.assembly_version }}" \
-            -p:FileVersion="${{ needs.resolve-versions.outputs.release_version }}" \
             -o out
-      
+
       - uses: actions/upload-artifact@v4
         with:
           name: nuget
@@ -171,32 +199,19 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
-    needs:
-      - resolve-versions
-      - pack
-    permissions:
-      contents: read
-      id-token: write  # enable GitHub OIDC token issuance for this job
+    needs: [resolve-versions, pack]
     if: needs.resolve-versions.outputs.publish == 'true'
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-
       - uses: actions/download-artifact@v4
         with:
           name: nuget
           path: out
-
-      # Get a short-lived NuGet API key
-      - name: NuGet login (OIDC → temp API key)
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-    
-      # Push the package
-      - name: NuGet push
-        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --timeout 1200
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push "out/*.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

@@ -1,61 +1,69 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Cross-compile FFmpeg for Linux musl from Ubuntu using musl-tools
 
 FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
 RID="linux-musl-x64"
-WORKSPACE="${WORKSPACE:-/work}"
-WORK_DIR="${WORKSPACE}/.build/${RID}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORK_DIR="${ROOT_DIR}/.build/${RID}"
 SRC_DIR="${WORK_DIR}/src"
 PREFIX_DIR="${WORK_DIR}/install"
-OUT_DIR="${WORKSPACE}/artifacts/${RID}/native"
+OUT_DIR="${ROOT_DIR}/artifacts/${RID}/native"
+
+# Use musl cross-compiler
+export CC="musl-gcc"
+export CFLAGS="-static-pie -O2 -pipe"
+export LDFLAGS="-static-pie"
 
 mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 
-apk add --no-cache \
-  bash \
-  build-base \
-  curl \
-  nasm \
-  tar \
-  xz \
-  yasm
-
 cd "${WORK_DIR}"
 rm -rf "${SRC_DIR}" "${PREFIX_DIR}"
+
+echo "Downloading FFmpeg ${FFMPEG_VERSION}..."
 curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" -o ffmpeg.tar.xz
 mkdir -p "${SRC_DIR}"
 tar -xf ffmpeg.tar.xz -C "${SRC_DIR}" --strip-components=1
 
 cd "${SRC_DIR}"
+
+echo "Configuring FFmpeg..."
 ./configure \
   --prefix="${PREFIX_DIR}" \
+  --cc="${CC}" \
   --enable-ffmpeg \
   --enable-ffprobe \
   --disable-ffplay \
+  --enable-shared \
+  --disable-static \
   --disable-doc \
   --disable-debug \
   --enable-pic \
-  --enable-shared \
-  --disable-static \
+  --enable-version3 \
   --disable-gpl \
-  --disable-nonfree
+  --disable-nonfree \
+  --disable-autodetect \
+  --extra-cflags="${CFLAGS}" \
+  --extra-ldflags="${LDFLAGS}"
 
-make -j"$(getconf _NPROCESSORS_ONLN)"
+echo "Building FFmpeg..."
+make -j"$(nproc)"
 make install
 
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
-cp -a "${PREFIX_DIR}/lib/libavcodec.so"* "${OUT_DIR}/"
-cp -a "${PREFIX_DIR}/lib/libavformat.so"* "${OUT_DIR}/"
-cp -a "${PREFIX_DIR}/lib/libavutil.so"* "${OUT_DIR}/"
-cp -a "${PREFIX_DIR}/lib/libswresample.so"* "${OUT_DIR}/"
-cp -a "${PREFIX_DIR}/lib/libswscale.so"* "${OUT_DIR}/"
+cp -a "${PREFIX_DIR}/lib/"*.so* "${OUT_DIR}/"
 cp -a "${PREFIX_DIR}/bin/ffmpeg" "${OUT_DIR}/"
 cp -a "${PREFIX_DIR}/bin/ffprobe" "${OUT_DIR}/"
 
-cat > "${WORKSPACE}/artifacts/${RID}/build-info.txt" <<EOF
+cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
+Build type: Linux musl (cross-compiled, LGPL shared)
+Compiler: ${CC}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --disable-doc --disable-debug --enable-pic --enable-shared --disable-static --disable-gpl --disable-nonfree
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect
 EOF
+
+echo "Done! FFmpeg binaries in ${OUT_DIR}"

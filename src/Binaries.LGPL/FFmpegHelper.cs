@@ -72,11 +72,12 @@ namespace DevEnvy.Binaries.LGPL
         private static string GetRuntimeIdentifier()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return "win-x64";
+                return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 // Detect musl (Alpine) vs glibc
+                var isMusl = false;
                 try
                 {
                     var process = new System.Diagnostics.Process
@@ -94,14 +95,16 @@ namespace DevEnvy.Binaries.LGPL
                     process.Start();
                     var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
                     process.WaitForExit();
-
-                    if (output.IndexOf("musl", StringComparison.OrdinalIgnoreCase) >= 0)
-                        return "linux-musl-x64";
+                    isMusl = output.IndexOf("musl", StringComparison.OrdinalIgnoreCase) >= 0;
                 }
                 catch { }
 
-                return "linux-x64";
+                var arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
+                return isMusl ? $"linux-musl-{arch}" : $"linux-{arch}";
             }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
 
             throw new PlatformNotSupportedException();
         }

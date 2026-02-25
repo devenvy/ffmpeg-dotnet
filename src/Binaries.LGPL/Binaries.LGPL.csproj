@@ -4,7 +4,7 @@
 		<PackageId>DevEnvy.FFmpeg.Binaries.LGPL</PackageId>
 		<Title>DevEnvy.FFmpeg.Binaries.LGPL</Title>
 		<Authors>DevEnvy</Authors>
-		<Description>Native FFmpeg LGPL binaries for win-x64, linux-x64, and linux-musl-x64 packaged for .NET applications.</Description>
+		<Description>Native FFmpeg LGPL binaries for Windows, Linux (glibc/musl), and macOS packaged for .NET applications.</Description>
 		<RepositoryType>git</RepositoryType>
 		<PackageTags>ffmpeg;native;media;video;audio</PackageTags>
 		<PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
@@ -17,12 +17,9 @@
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="/" />
 		<None Include="THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="/" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<Content Include="ffmpeg\**\*" Pack="true" PackagePath="contentFiles\any\any\ffmpeg" CopyToOutputDirectory="PreserveNewest">
-			<PackageCopyToOutput>true</PackageCopyToOutput>
-		</Content>
+		<None Include="ffmpeg\**\*" Pack="true" PackagePath="ffmpeg/" />
+		<None Include="build\**\*" Pack="true" PackagePath="build/" />
+		<None Include="build\**\*" Pack="true" PackagePath="buildTransitive/" />
 	</ItemGroup>
 
 	<ItemGroup>
