@@ -1,6 +1,7 @@
 ﻿using FFmpeg.AutoGen.Abstractions;
 using FFmpeg.AutoGen.Bindings.DynamicallyLoaded;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -40,6 +41,36 @@ namespace DevEnvy.Binaries.LGPL
         {
             var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffprobe.exe" : "ffprobe";
             return Path.Combine(GetLibraryPath(), name);
+        }
+
+        /// <summary>
+        /// Enumerates the hardware device types compiled into this FFmpeg build.
+        /// Must be called after <see cref="RegisterFFmpegBinaries"/>.
+        /// A type being listed means the code path exists in the binary;
+        /// the actual hardware driver must still be present at runtime.
+        /// </summary>
+        public static IEnumerable<AVHWDeviceType> GetAvailableHardwareDeviceTypes()
+        {
+            var type = AVHWDeviceType.AV_HWDEVICE_TYPE_NONE;
+            while ((type = ffmpeg.av_hwdevice_iterate_types(type)) != AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
+            {
+                yield return type;
+            }
+        }
+
+        /// <summary>
+        /// Checks whether a specific hardware device type is compiled into this FFmpeg build.
+        /// Must be called after <see cref="RegisterFFmpegBinaries"/>.
+        /// </summary>
+        public static bool IsHardwareDeviceTypeAvailable(AVHWDeviceType deviceType)
+        {
+            foreach (var available in GetAvailableHardwareDeviceTypes())
+            {
+                if (available == deviceType)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

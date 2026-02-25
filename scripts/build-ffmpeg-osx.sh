@@ -37,7 +37,6 @@ echo "Configuring FFmpeg..."
   --disable-doc \
   --disable-debug \
   --enable-pic \
-  --enable-version3 \
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
@@ -60,7 +59,7 @@ RID: ${RID}
 Build type: Native macOS (LGPL shared)
 Hardware acceleration: VideoToolbox AudioToolbox
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

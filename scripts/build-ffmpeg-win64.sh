@@ -80,7 +80,6 @@ echo "Configuring FFmpeg..."
   --disable-static \
   --disable-doc \
   --disable-debug \
-  --enable-version3 \
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
@@ -114,7 +113,7 @@ Toolchain: ${CROSS_PREFIX}
 Build type: Cross-compiled from Linux (LGPL shared)
 Hardware acceleration: CUDA NVENC NVDEC D3D11VA DXVA2 AMF MediaFoundation
 Configure flags:
---cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-version3 --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-mediafoundation
+--cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-mediafoundation
 CFLAGS: ${CFLAGS}
 LDFLAGS: ${LDFLAGS}
 EOF
