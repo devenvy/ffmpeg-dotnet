@@ -116,6 +116,21 @@ echo "pkg-config check: $(pkg-config --modversion vpl 2>&1)"
 echo "pkg-config cflags: $(pkg-config --cflags vpl 2>&1)"
 echo "pkg-config libs: $(pkg-config --libs vpl 2>&1)"
 
+# Replicate FFmpeg's check_pkg_config test to see exact error
+echo "=== Reproducing FFmpeg configure test ==="
+VPL_CFLAGS="$(pkg-config --cflags vpl)"
+VPL_LIBS="$(pkg-config --libs vpl)"
+cat > /tmp/vpltest.c <<'TESTC'
+#include <mfxvideo.h>
+#include <mfxdispatcher.h>
+long check_MFXLoad(void) { return (long) MFXLoad; }
+int main(void) { return 0; }
+TESTC
+echo "Compile test:"
+${CROSS_PREFIX}-gcc ${VPL_CFLAGS} -c /tmp/vpltest.c -o /tmp/vpltest.o 2>&1 && echo "  compile OK" || echo "  compile FAILED"
+echo "Link test:"
+${CROSS_PREFIX}-gcc /tmp/vpltest.o ${VPL_LIBS} -o /tmp/vpltest.exe 2>&1 && echo "  link OK" || echo "  link FAILED"
+
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
 
 cd "${WORK_DIR}"
