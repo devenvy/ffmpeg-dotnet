@@ -105,7 +105,7 @@ includedir=\${prefix}/include/vpl
 Name: libvpl
 Description: Intel Video Processing Library (oneVPL)
 Version: 2.14
-Libs: -L\${libdir} -lvpl -lstdc++ -lole32 -lgdi32
+Libs: -L\${libdir} -lvpl -lstdc++ -lole32 -lgdi32 -ladvapi32 -ld3d9 -ldxva2 -lsetupapi -lshlwapi
 Cflags: -I\${includedir}
 PKGCONFIG
 
