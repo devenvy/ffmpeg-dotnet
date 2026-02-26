@@ -88,8 +88,21 @@ cmake -G Ninja -B build \
 cmake --build build -j"$(nproc)"
 cmake --install build
 
-# libvpl dispatcher is C++, so pkg-config needs -lstdc++ for static linking
-sed -i 's/^Libs\.private:.*/& -lstdc++/' "${DEPS_DIR}/lib/pkgconfig/vpl.pc"
+# cmake skips generating vpl.pc when targeting Windows — create it manually
+# libvpl dispatcher is C++, so we need -lstdc++ for static linking
+mkdir -p "${DEPS_DIR}/lib/pkgconfig"
+cat > "${DEPS_DIR}/lib/pkgconfig/vpl.pc" <<PKGCONFIG
+prefix=${DEPS_DIR}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+
+Name: libvpl
+Description: Intel Video Processing Library (oneVPL)
+Version: 2.14
+Libs: -L\${libdir} -lvpl
+Libs.private: -lstdc++ -lole32 -lgdi32
+Cflags: -I\${includedir}
+PKGCONFIG
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 

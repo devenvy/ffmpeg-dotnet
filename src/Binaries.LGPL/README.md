@@ -13,13 +13,19 @@
 
 All hardware acceleration is enabled via **compile-time headers** (MIT-licensed) with runtime driver loading — fully LGPL-compatible:
 
-| Platform | Accelerators |
-|----------|-------------|
-| Windows  | NVENC, NVDEC, CUDA, D3D11VA, DXVA2, AMF, QSV (libvpl), MediaFoundation |
-| Linux x64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, VDPAU, QSV (libvpl), libdrm, V4L2 M2M |
-| Linux ARM64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, libdrm, V4L2 M2M |
-| Linux musl x64 | NVENC, NVDEC, CUDA, VAAPI, libdrm, V4L2 M2M |
-| macOS    | VideoToolbox, AudioToolbox |
+| Accelerator | Windows x64 | Linux x64 (glibc) | Linux ARM64 (glibc) | Linux musl x64 | macOS |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **NVIDIA (NVENC/NVDEC/CUDA)** | Y | Y | Y | Y | - |
+| **AMD AMF** | Y | - | - | - | - |
+| **Intel QSV (libvpl)** | Y | Y | - | - | - |
+| **VAAPI** | - | Y | Y | Y | - |
+| **VideoToolbox** | - | - | - | - | Y |
+| **V4L2 M2M** | - | Y | Y | - | - |
+| **D3D11VA / DXVA2** | Y | - | - | - | - |
+| **VDPAU** | - | Y | - | - | - |
+| **MediaFoundation** | Y | - | - | - | - |
+| **AudioToolbox** | - | - | - | - | Y |
+| **libdrm** | - | Y | Y | Y | - |
 
 ## Usage
 
