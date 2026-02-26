@@ -43,6 +43,18 @@ this package — the host system must provide them when the corresponding HW acc
 - Purpose: Intel Quick Sync Video (QSV) dispatcher for hardware encode/decode (Linux only)
 - Runtime: Requires Intel GPU driver with oneVPL/Media SDK runtime
 
+## Statically linked libraries (ARM64 only)
+
+The following library is compiled as a **static archive** and linked into the FFmpeg
+shared libraries for the `linux-arm64` build. This avoids a hard runtime dependency on
+non-Rockchip ARM64 systems while still registering the RKMPP encoders/decoders.
+
+### Rockchip MPP (Media Process Platform)
+- Project: https://github.com/rockchip-linux/mpp
+- License: Apache 2.0
+- Purpose: Hardware video encode/decode for Rockchip SoCs (RK3588, RK3568, etc.)
+- Runtime: Requires a Rockchip SoC with MPP kernel driver
+
 ## Source and scripts
 
 The build scripts and workflow used to produce these binaries are included in this repository under:
