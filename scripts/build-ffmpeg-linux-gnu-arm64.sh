@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build FFmpeg for Linux ARM64 (glibc) - LGPL shared libraries
 # Native build on ARM64 runner
-# Targets: NVIDIA Jetson, Rockchip SoCs (RK3588 etc.), Raspberry Pi, generic ARM64 servers
+# Targets: NVIDIA Jetson, Raspberry Pi, generic ARM64 servers
 
 FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
 RID="linux-arm64"
@@ -22,7 +22,6 @@ sudo apt-get install -y --no-install-recommends \
   autoconf \
   automake \
   build-essential \
-  cmake \
   curl \
   git \
   libdrm-dev \
@@ -44,25 +43,6 @@ rm -rf nv-codec-headers
 git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
 cd nv-codec-headers
 make install PREFIX="${DEPS_DIR}"
-
-# Rockchip MPP (Apache 2.0 – hardware codec for Rockchip SoCs)
-# Built as a static library with -fPIC so it gets baked into FFmpeg shared libs.
-# This avoids a hard runtime dependency on librockchip_mpp.so for non-Rockchip
-# ARM64 systems while still registering the rkmpp encoders/decoders.
-echo "Building Rockchip MPP (static)..."
-cd "${WORK_DIR}"
-rm -rf mpp
-git clone --depth 1 https://github.com/rockchip-linux/mpp.git
-cd mpp
-cmake -B build \
-  -DCMAKE_INSTALL_PREFIX="${DEPS_DIR}" \
-  -DCMAKE_INSTALL_LIBDIR=lib \
-  -DCMAKE_C_FLAGS="-fPIC" \
-  -DCMAKE_CXX_FLAGS="-fPIC" \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DBUILD_TEST=OFF
-cmake --build build -j"$(nproc)"
-cmake --install build
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
@@ -99,10 +79,8 @@ echo "Configuring FFmpeg..."
   --enable-ffnvcodec \
   --enable-vaapi \
   --enable-libdrm \
-  --enable-rkmpp \
   --enable-v4l2-m2m \
-  --extra-cflags="-I${DEPS_DIR}/include" \
-  --extra-ldflags="-L${DEPS_DIR}/lib"
+  --extra-cflags="-I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
 make -j"$(nproc)"
@@ -118,9 +96,9 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native Linux ARM64 glibc (LGPL shared)
-Hardware acceleration: CUDA NVENC NVDEC VAAPI libdrm RKMPP(static) V4L2-M2M
+Hardware acceleration: CUDA NVENC NVDEC VAAPI libdrm V4L2-M2M
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-rkmpp --enable-v4l2-m2m
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-v4l2-m2m
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
