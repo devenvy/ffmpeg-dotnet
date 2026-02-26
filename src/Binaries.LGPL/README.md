@@ -4,21 +4,21 @@
 
 - `win-x64`
 - `linux-x64` (glibc, Ubuntu-compatible)
-- `linux-arm64` (glibc, Jetson / Rockchip / RPi / generic ARM64)
+- `linux-arm64` (glibc, Jetson / RPi / generic ARM64)
 - `linux-musl-x64` (musl, Alpine-compatible)
 - `osx-x64`
 - `osx-arm64`
 
 ## Hardware Acceleration
 
-All hardware acceleration is enabled via **compile-time headers only** (MIT-licensed) with runtime driver loading — fully LGPL-compatible:
+All hardware acceleration is enabled via **compile-time headers** (MIT-licensed) with runtime driver loading — fully LGPL-compatible:
 
 | Platform | Accelerators |
 |----------|-------------|
-| Windows  | NVENC, NVDEC, CUDA, D3D11VA, DXVA2, AMF, MediaFoundation |
-| Linux x64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, VDPAU, QSV (libvpl), V4L2 M2M |
-| Linux ARM64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, RKMPP, V4L2 M2M |
-| Linux (musl)  | NVENC, NVDEC, CUDA |
+| Windows  | NVENC, NVDEC, CUDA, D3D11VA, DXVA2, AMF, QSV (libvpl), MediaFoundation |
+| Linux x64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, VDPAU, QSV (libvpl), libdrm, V4L2 M2M |
+| Linux ARM64 (glibc) | NVENC, NVDEC, CUDA, VAAPI, libdrm, V4L2 M2M |
+| Linux musl x64 | NVENC, NVDEC, CUDA, VAAPI, libdrm, V4L2 M2M |
 | macOS    | VideoToolbox, AudioToolbox |
 
 ## Usage

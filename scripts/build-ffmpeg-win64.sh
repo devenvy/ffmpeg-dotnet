@@ -51,6 +51,46 @@ git clone --depth 1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
 mkdir -p "${DEPS_DIR}/include/AMF"
 cp -r AMF/amf/public/include/* "${DEPS_DIR}/include/AMF/"
 
+# libvpl (MIT – Intel oneVPL dispatcher for QSV encode/decode)
+# Built as a static library so the dispatcher is baked into FFmpeg shared libs.
+# At runtime, the dispatcher uses LoadLibrary to find the Intel GPU runtime.
+echo "Cross-compiling libvpl (static)..."
+cd "${WORK_DIR}"
+rm -rf libvpl
+
+TOOLCHAIN_FILE="${WORK_DIR}/mingw-toolchain.cmake"
+cat > "${TOOLCHAIN_FILE}" <<CMAKE
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_C_COMPILER ${CROSS_PREFIX}-gcc)
+set(CMAKE_CXX_COMPILER ${CROSS_PREFIX}-g++)
+set(CMAKE_RC_COMPILER ${CROSS_PREFIX}-windres)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+CMAKE
+
+git clone --depth 1 https://github.com/intel/libvpl.git
+cd libvpl
+cmake -G Ninja -B build \
+  -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
+  -DCMAKE_INSTALL_PREFIX="${DEPS_DIR}" \
+  -DCMAKE_INSTALL_LIBDIR=lib \
+  -DBUILD_DISPATCHER=ON \
+  -DBUILD_DEV=ON \
+  -DBUILD_PREVIEW=OFF \
+  -DBUILD_TOOLS=OFF \
+  -DBUILD_TOOLS_ONEVPL_EXPERIMENTAL=OFF \
+  -DINSTALL_EXAMPLE_CODE=OFF \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DBUILD_TESTS=OFF \
+  -DCMAKE_C_FLAGS="-static-libgcc -O2" \
+  -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -O2"
+cmake --build build -j"$(nproc)"
+cmake --install build
+
+# libvpl dispatcher is C++, so pkg-config needs -lstdc++ for static linking
+sed -i 's/^Libs\.private:.*/& -lstdc++/' "${DEPS_DIR}/lib/pkgconfig/vpl.pc"
+
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
@@ -91,6 +131,7 @@ echo "Configuring FFmpeg..."
   --enable-d3d11va \
   --enable-dxva2 \
   --enable-amf \
+  --enable-libvpl \
   --enable-mediafoundation \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include" \
   --extra-cxxflags="${CXXFLAGS}" \
@@ -111,9 +152,9 @@ FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Toolchain: ${CROSS_PREFIX}
 Build type: Cross-compiled from Linux (LGPL shared)
-Hardware acceleration: CUDA NVENC NVDEC D3D11VA DXVA2 AMF MediaFoundation
+Hardware acceleration: CUDA NVENC NVDEC D3D11VA DXVA2 AMF QSV(libvpl) MediaFoundation
 Configure flags:
---cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-mediafoundation
+--cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-libvpl --enable-mediafoundation
 CFLAGS: ${CFLAGS}
 LDFLAGS: ${LDFLAGS}
 EOF
