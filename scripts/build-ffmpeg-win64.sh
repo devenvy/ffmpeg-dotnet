@@ -88,48 +88,23 @@ cmake -G Ninja -B build \
 cmake --build build -j"$(nproc)"
 cmake --install build
 
-# Diagnostics: show what libvpl actually installed
-echo "=== libvpl installed files ==="
-find "${DEPS_DIR}" -name "*vpl*" -o -name "*mfx*" | head -30
-echo "=== end ==="
-
-# cmake skips generating vpl.pc when targeting Windows — create it manually
-# Headers install to include/vpl/, library to lib/
-# libvpl dispatcher is C++, so we need -lstdc++ for static linking
-mkdir -p "${DEPS_DIR}/lib/pkgconfig"
+# Write vpl.pc with known deps from libvpl/CMakeLists.txt:
+#   MINGW_LIBS = -lole32 -lgdi32 -luuid
+#   CXX_LIB   = -lstdc++ (C++ dispatcher)
+#   Cflags    from vpl.pc.in: -I${includedir} -I${includedir}/vpl
 cat > "${DEPS_DIR}/lib/pkgconfig/vpl.pc" <<PKGCONFIG
 prefix=${DEPS_DIR}
 libdir=\${prefix}/lib
-includedir=\${prefix}/include/vpl
+includedir=\${prefix}/include
 
 Name: libvpl
 Description: Intel Video Processing Library (oneVPL)
-Version: 2.14
-Libs: -L\${libdir} -lvpl -lstdc++ -lole32 -lgdi32 -ladvapi32 -ld3d9 -ldxva2 -lsetupapi -lshlwapi
-Cflags: -I\${includedir}
+Version: 2.16
+Libs: -L\${libdir} -lvpl -lole32 -lgdi32 -luuid -lstdc++
+Cflags: -I\${includedir} -I\${includedir}/vpl
 PKGCONFIG
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-
-# Verify pkg-config can find libvpl
-echo "pkg-config check: $(pkg-config --modversion vpl 2>&1)"
-echo "pkg-config cflags: $(pkg-config --cflags vpl 2>&1)"
-echo "pkg-config libs: $(pkg-config --libs vpl 2>&1)"
-
-# Replicate FFmpeg's check_pkg_config test to see exact error
-echo "=== Reproducing FFmpeg configure test ==="
-VPL_CFLAGS="$(pkg-config --cflags vpl)"
-VPL_LIBS="$(pkg-config --libs vpl)"
-cat > /tmp/vpltest.c <<'TESTC'
-#include <mfxvideo.h>
-#include <mfxdispatcher.h>
-long check_MFXLoad(void) { return (long) MFXLoad; }
-int main(void) { return 0; }
-TESTC
-echo "Compile test:"
-${CROSS_PREFIX}-gcc ${VPL_CFLAGS} -c /tmp/vpltest.c -o /tmp/vpltest.o 2>&1 && echo "  compile OK" || echo "  compile FAILED"
-echo "Link test:"
-${CROSS_PREFIX}-gcc /tmp/vpltest.o ${VPL_LIBS} -o /tmp/vpltest.exe 2>&1 && echo "  link OK" || echo "  link FAILED"
 
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
 
