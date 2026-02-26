@@ -88,13 +88,19 @@ cmake -G Ninja -B build \
 cmake --build build -j"$(nproc)"
 cmake --install build
 
+# Diagnostics: show what libvpl actually installed
+echo "=== libvpl installed files ==="
+find "${DEPS_DIR}" -name "*vpl*" -o -name "*mfx*" | head -30
+echo "=== end ==="
+
 # cmake skips generating vpl.pc when targeting Windows — create it manually
+# Headers install to include/vpl/, library to lib/
 # libvpl dispatcher is C++, so we need -lstdc++ for static linking
 mkdir -p "${DEPS_DIR}/lib/pkgconfig"
 cat > "${DEPS_DIR}/lib/pkgconfig/vpl.pc" <<PKGCONFIG
 prefix=${DEPS_DIR}
 libdir=\${prefix}/lib
-includedir=\${prefix}/include
+includedir=\${prefix}/include/vpl
 
 Name: libvpl
 Description: Intel Video Processing Library (oneVPL)
@@ -105,6 +111,11 @@ Cflags: -I\${includedir}
 PKGCONFIG
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# Verify pkg-config can find libvpl
+echo "pkg-config check: $(pkg-config --modversion vpl 2>&1)"
+echo "pkg-config cflags: $(pkg-config --cflags vpl 2>&1)"
+echo "pkg-config libs: $(pkg-config --libs vpl 2>&1)"
 
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
 

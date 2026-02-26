@@ -18,14 +18,14 @@ All hardware acceleration is enabled via **compile-time headers** (MIT-licensed)
 | **NVIDIA (NVENC/NVDEC/CUDA)** | Y | Y | Y | Y | - |
 | **AMD AMF** | Y | - | - | - | - |
 | **Intel QSV (libvpl)** | Y | Y | - | - | - |
-| **VAAPI** | - | Y | Y | Y | - |
+| **VAAPI** | - | Y | Y | - | - |
 | **VideoToolbox** | - | - | - | - | Y |
 | **V4L2 M2M** | - | Y | Y | - | - |
 | **D3D11VA / DXVA2** | Y | - | - | - | - |
 | **VDPAU** | - | Y | - | - | - |
 | **MediaFoundation** | Y | - | - | - | - |
 | **AudioToolbox** | - | - | - | - | Y |
-| **libdrm** | - | Y | Y | Y | - |
+| **libdrm** | - | Y | Y | - | - |
 
 ## Usage
 

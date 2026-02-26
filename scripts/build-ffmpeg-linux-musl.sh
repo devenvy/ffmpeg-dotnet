@@ -65,8 +65,6 @@ echo "Configuring FFmpeg..."
   --enable-nvenc \
   --enable-nvdec \
   --enable-ffnvcodec \
-  --enable-vaapi \
-  --enable-libdrm \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
@@ -84,9 +82,9 @@ FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Linux musl (cross-compiled, LGPL shared)
 Compiler: ${CC}
-Hardware acceleration: CUDA NVENC NVDEC VAAPI libdrm
+Hardware acceleration: CUDA NVENC NVDEC
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
