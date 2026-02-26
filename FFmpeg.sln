@@ -8,7 +8,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.gitignore = .gitignore
 		scripts\build-ffmpeg-linux-gnu.sh = scripts\build-ffmpeg-linux-gnu.sh
 		scripts\build-ffmpeg-linux-musl.sh = scripts\build-ffmpeg-linux-musl.sh
-		scripts\build-ffmpeg-msys2.sh = scripts\build-ffmpeg-msys2.sh
+		scripts\build-ffmpeg-linux-gnu-arm64.sh = scripts\build-ffmpeg-linux-gnu-arm64.sh
+		scripts\build-ffmpeg-win64.sh = scripts\build-ffmpeg-win64.sh
+		scripts\build-ffmpeg-osx.sh = scripts\build-ffmpeg-osx.sh
+
 		.github\workflows\build-pack-publish.yml = .github\workflows\build-pack-publish.yml
 	EndProjectSection
 EndProject
