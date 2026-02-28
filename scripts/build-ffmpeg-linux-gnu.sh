@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build FFmpeg for Linux (glibc) - LGPL shared libraries
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
 RID="linux-x64"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="${ROOT_DIR}/.build/${RID}"

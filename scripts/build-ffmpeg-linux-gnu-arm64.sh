@@ -5,7 +5,7 @@ set -euo pipefail
 # Native build on ARM64 runner
 # Targets: NVIDIA Jetson, Raspberry Pi, generic ARM64 servers
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
 RID="linux-arm64"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="${ROOT_DIR}/.build/${RID}"

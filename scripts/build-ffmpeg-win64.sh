@@ -4,7 +4,7 @@ set -euo pipefail
 # Cross-compile FFmpeg for Windows from Linux using mingw-w64
 # Based on BtbN/FFmpeg-Builds approach
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
 RID="win-x64"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
