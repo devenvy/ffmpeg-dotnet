@@ -13,6 +13,10 @@ on:
         required: false
         type: string
         default: ""
+      autogen_version:
+        required: false
+        type: string
+        default: ""
 
 env:
   DOTNET_NOLOGO: true
@@ -180,15 +184,41 @@ jobs:
           name: osx-arm64-native
           path: src/Binaries.LGPL/ffmpeg/osx-arm64
 
+      - name: Resolve AutoGen version
+        id: autogen
+        run: |
+          if [[ -n "${{ inputs.autogen_version }}" ]]; then
+            echo "version=${{ inputs.autogen_version }}" >> "$GITHUB_OUTPUT"
+          else
+            FFMPEG_SERIES="${{ inputs.ffmpeg_version }}"
+            FFMPEG_SERIES="${FFMPEG_SERIES%.*}"
+            RESOLVED=$(curl -s "https://api.nuget.org/v3-flatcontainer/ffmpeg.autogen.bindings.dynamicallyloaded/index.json" \
+              | jq -r '.versions[]' \
+              | grep "^${FFMPEG_SERIES}\." \
+              | sort -V \
+              | tail -1)
+            if [[ -n "$RESOLVED" ]]; then
+              echo "version=${RESOLVED}" >> "$GITHUB_OUTPUT"
+            else
+              echo "No AutoGen version found for series ${FFMPEG_SERIES}, using csproj default"
+              echo "version=" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Pack NuGet
         run: |
           VERSION="${{ inputs.package_version }}"
           ASSEMBLY_VERSION="${VERSION%%.*}.0.0.0"
+          AUTOGEN_FLAG=""
+          if [[ -n "${{ steps.autogen.outputs.version }}" ]]; then
+            AUTOGEN_FLAG="-p:FFmpegAutoGenVersion=${{ steps.autogen.outputs.version }}"
+          fi
           dotnet pack "$PACKAGE_PROJECT" \
             -c Release \
             -p:Version="$VERSION" \
             -p:PackageVersion="$VERSION" \
             -p:AssemblyVersion="$ASSEMBLY_VERSION" \
+            $AUTOGEN_FLAG \
             -o out
 
       - uses: actions/upload-artifact@v4
