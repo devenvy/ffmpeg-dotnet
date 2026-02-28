@@ -1,20 +1,8 @@
 name: Build, Pack, and Publish FFmpeg NuGet
 
 on:
-  workflow_dispatch:
-    inputs:
-      ffmpeg_version:
-        description: "FFmpeg version (e.g., 7.1.1)"
-        required: true
-        default: "7.1.1"
-      package_version:
-        description: "NuGet package version (e.g., 1.0.0)"
-        required: true
-      publish:
-        description: "Publish to NuGet"
-        required: true
-        default: false
-        type: boolean
+  pull_request:
+    branches: [main]
   push:
     tags:
       - "v*"
@@ -34,18 +22,16 @@ jobs:
       ffmpeg_version: ${{ steps.set.outputs.ffmpeg_version }}
       release_version: ${{ steps.set.outputs.release_version }}
       assembly_version: ${{ steps.set.outputs.assembly_version }}
-      publish: ${{ steps.set.outputs.publish }}
     steps:
+      - uses: actions/checkout@v4
       - id: set
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "ffmpeg_version=${{ github.event.inputs.ffmpeg_version }}" >> "$GITHUB_OUTPUT"
-            VERSION="${{ github.event.inputs.package_version }}"
-            echo "publish=${{ github.event.inputs.publish }}" >> "$GITHUB_OUTPUT"
-          else
+          FFMPEG_VER="$(tr -d '[:space:]' < FFMPEG_VERSION)"
+          echo "ffmpeg_version=${FFMPEG_VER}" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
-            echo "ffmpeg_version=7.1.1" >> "$GITHUB_OUTPUT"
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="0.0.0-pr"
           fi
           echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "assembly_version=${VERSION%%.*}.0.0.0" >> "$GITHUB_OUTPUT"
@@ -226,8 +212,8 @@ jobs:
       - pack
     permissions:
       contents: read
-      id-token: write  # enable GitHub OIDC token issuance for this job
-    if: needs.resolve-versions.outputs.publish == 'true'
+      id-token: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -240,13 +226,11 @@ jobs:
           name: nuget
           path: out
 
-      # Get a short-lived NuGet API key
-      - name: NuGet login (OIDC → temp API key)
+      - name: NuGet login (OIDC)
         uses: NuGet/login@v1
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
-    
-      # Push the package
+
       - name: NuGet push
         run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Build FFmpeg for Linux (glibc) - LGPL shared libraries
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
-RID="linux-x64"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FFMPEG_VERSION="${FFMPEG_VERSION:-$(cat "${ROOT_DIR}/FFMPEG_VERSION" | tr -d '[:space:]')}"
+RID="linux-x64"
 WORK_DIR="${ROOT_DIR}/.build/${RID}"
 SRC_DIR="${WORK_DIR}/src"
 PREFIX_DIR="${WORK_DIR}/install"
@@ -35,7 +35,7 @@ mkdir -p "${DEPS_DIR}"
 
 # ?? Hardware acceleration headers ??????????????????????????????????????????????
 
-# nv-codec-headers (MIT – compile-time headers for NVENC/NVDEC/CUDA)
+# nv-codec-headers (MIT ï¿½ compile-time headers for NVENC/NVDEC/CUDA)
 echo "Building nv-codec-headers..."
 cd "${WORK_DIR}"
 rm -rf nv-codec-headers
