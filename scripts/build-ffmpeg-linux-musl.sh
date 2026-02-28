@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Build FFmpeg for Linux musl from Ubuntu using musl-tools
 
-FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.3}"
-RID="linux-musl-x64"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FFMPEG_VERSION="${FFMPEG_VERSION:-$(cat "${ROOT_DIR}/FFMPEG_VERSION" | tr -d '[:space:]')}"
+RID="linux-musl-x64"
 WORK_DIR="${ROOT_DIR}/.build/${RID}"
 SRC_DIR="${WORK_DIR}/src"
 PREFIX_DIR="${WORK_DIR}/install"
