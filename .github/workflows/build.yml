@@ -1,46 +1,34 @@
-name: Build, Pack, and Publish FFmpeg NuGet
+name: Build FFmpeg (reusable)
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    tags:
-      - "v*"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      ffmpeg_version:
+        required: true
+        type: string
+      package_version:
+        required: true
+        type: string
+      ref:
+        required: false
+        type: string
+        default: ""
+      autogen_version:
+        required: false
+        type: string
+        default: ""
 
 env:
   DOTNET_NOLOGO: true
   PACKAGE_PROJECT: src/Binaries.LGPL/Binaries.LGPL.csproj
 
 jobs:
-  resolve-versions:
-    runs-on: ubuntu-latest
-    outputs:
-      ffmpeg_version: ${{ steps.set.outputs.ffmpeg_version }}
-      release_version: ${{ steps.set.outputs.release_version }}
-      assembly_version: ${{ steps.set.outputs.assembly_version }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: set
-        run: |
-          FFMPEG_VER="$(tr -d '[:space:]' < FFMPEG_VERSION)"
-          echo "ffmpeg_version=${FFMPEG_VER}" >> "$GITHUB_OUTPUT"
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="0.0.0-pr"
-          fi
-          echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "assembly_version=${VERSION%%.*}.0.0.0" >> "$GITHUB_OUTPUT"
-
   build-win-x64:
     runs-on: ubuntu-latest
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Install mingw-w64 cross-compiler
         run: |
           sudo apt-get update
@@ -49,7 +37,7 @@ jobs:
       - name: Build FFmpeg for Windows
         run: |
           chmod +x scripts/build-ffmpeg-win64.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             ./scripts/build-ffmpeg-win64.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -59,13 +47,14 @@ jobs:
 
   build-linux-x64:
     runs-on: ubuntu-latest
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for Linux (glibc)
         run: |
           chmod +x scripts/build-ffmpeg-linux-gnu.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             ./scripts/build-ffmpeg-linux-gnu.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -75,13 +64,14 @@ jobs:
 
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for Linux ARM64 (glibc)
         run: |
           chmod +x scripts/build-ffmpeg-linux-gnu-arm64.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             ./scripts/build-ffmpeg-linux-gnu-arm64.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -91,9 +81,10 @@ jobs:
 
   build-linux-musl-x64:
     runs-on: ubuntu-latest
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Install musl cross-compiler
         run: |
           sudo apt-get update
@@ -102,7 +93,7 @@ jobs:
       - name: Build FFmpeg for Linux (musl)
         run: |
           chmod +x scripts/build-ffmpeg-linux-musl.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             ./scripts/build-ffmpeg-linux-musl.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -112,13 +103,14 @@ jobs:
 
   build-osx-x64:
     runs-on: macos-15-intel
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for macOS x64
         run: |
           chmod +x scripts/build-ffmpeg-osx.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             RID=osx-x64 \
             ./scripts/build-ffmpeg-osx.sh
       - uses: actions/upload-artifact@v4
@@ -129,13 +121,14 @@ jobs:
 
   build-osx-arm64:
     runs-on: macos-latest
-    needs: resolve-versions
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for macOS ARM64
         run: |
           chmod +x scripts/build-ffmpeg-osx.sh
-          FFMPEG_VERSION="${{ needs.resolve-versions.outputs.ffmpeg_version }}" \
+          FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             RID=osx-arm64 \
             ./scripts/build-ffmpeg-osx.sh
       - uses: actions/upload-artifact@v4
@@ -147,7 +140,6 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     needs:
-      - resolve-versions
       - build-win-x64
       - build-linux-x64
       - build-linux-arm64
@@ -156,6 +148,8 @@ jobs:
       - build-osx-arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -190,13 +184,41 @@ jobs:
           name: osx-arm64-native
           path: src/Binaries.LGPL/ffmpeg/osx-arm64
 
+      - name: Resolve AutoGen version
+        id: autogen
+        run: |
+          if [[ -n "${{ inputs.autogen_version }}" ]]; then
+            echo "version=${{ inputs.autogen_version }}" >> "$GITHUB_OUTPUT"
+          else
+            FFMPEG_SERIES="${{ inputs.ffmpeg_version }}"
+            FFMPEG_SERIES="${FFMPEG_SERIES%.*}"
+            RESOLVED=$(curl -s "https://api.nuget.org/v3-flatcontainer/ffmpeg.autogen.bindings.dynamicallyloaded/index.json" \
+              | jq -r '.versions[]' \
+              | grep "^${FFMPEG_SERIES}\." \
+              | sort -V \
+              | tail -1)
+            if [[ -n "$RESOLVED" ]]; then
+              echo "version=${RESOLVED}" >> "$GITHUB_OUTPUT"
+            else
+              echo "No AutoGen version found for series ${FFMPEG_SERIES}, using csproj default"
+              echo "version=" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Pack NuGet
         run: |
+          VERSION="${{ inputs.package_version }}"
+          ASSEMBLY_VERSION="${VERSION%%.*}.0.0.0"
+          AUTOGEN_FLAG=""
+          if [[ -n "${{ steps.autogen.outputs.version }}" ]]; then
+            AUTOGEN_FLAG="-p:FFmpegAutoGenVersion=${{ steps.autogen.outputs.version }}"
+          fi
           dotnet pack "$PACKAGE_PROJECT" \
             -c Release \
-            -p:Version="${{ needs.resolve-versions.outputs.release_version }}" \
-            -p:PackageVersion="${{ needs.resolve-versions.outputs.release_version }}" \
-            -p:AssemblyVersion="${{ needs.resolve-versions.outputs.assembly_version }}" \
+            -p:Version="$VERSION" \
+            -p:PackageVersion="$VERSION" \
+            -p:AssemblyVersion="$ASSEMBLY_VERSION" \
+            $AUTOGEN_FLAG \
             -o out
 
       - uses: actions/upload-artifact@v4
@@ -204,33 +226,3 @@ jobs:
           name: nuget
           path: out/*.nupkg
           if-no-files-found: error
-
-  publish:
-    runs-on: ubuntu-latest
-    needs:
-      - resolve-versions
-      - pack
-    permissions:
-      contents: read
-      id-token: write
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: nuget
-          path: out
-
-      - name: NuGet login (OIDC)
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-
-      - name: NuGet push
-        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate

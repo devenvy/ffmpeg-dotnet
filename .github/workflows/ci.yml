@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      ffmpeg_version: ${{ steps.v.outputs.ffmpeg_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "ffmpeg_version=$(tr -d '[:space:]' < FFMPEG_VERSION)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    uses: ./.github/workflows/build.yml
+    with:
+      ffmpeg_version: ${{ needs.resolve.outputs.ffmpeg_version }}
+      package_version: "0.0.0-pr"

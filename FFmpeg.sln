@@ -6,13 +6,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		.gitattributes = .gitattributes
 		.gitignore = .gitignore
+		scripts\build-ffmpeg-linux-gnu-arm64.sh = scripts\build-ffmpeg-linux-gnu-arm64.sh
 		scripts\build-ffmpeg-linux-gnu.sh = scripts\build-ffmpeg-linux-gnu.sh
 		scripts\build-ffmpeg-linux-musl.sh = scripts\build-ffmpeg-linux-musl.sh
-		scripts\build-ffmpeg-linux-gnu-arm64.sh = scripts\build-ffmpeg-linux-gnu-arm64.sh
-		scripts\build-ffmpeg-win64.sh = scripts\build-ffmpeg-win64.sh
 		scripts\build-ffmpeg-osx.sh = scripts\build-ffmpeg-osx.sh
-
-		.github\workflows\build-pack-publish.yml = .github\workflows\build-pack-publish.yml
+		scripts\build-ffmpeg-win64.sh = scripts\build-ffmpeg-win64.sh
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Binaries.LGPL", "src\Binaries.LGPL\Binaries.LGPL.csproj", "{476584F2-6958-1734-F448-381B7E77353B}"

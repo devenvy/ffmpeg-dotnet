@@ -12,6 +12,7 @@
 		<IncludeBuildOutput>true</IncludeBuildOutput>
 		<LangVersion>latest</LangVersion>
 		<Nullable>enable</Nullable>
+		<FFmpegAutoGenVersion Condition="'$(FFmpegAutoGenVersion)' == ''">7.1.1</FFmpegAutoGenVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -23,6 +24,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="7.1.1" />
+		<PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="8.0.0" />
 	</ItemGroup>
 </Project>
