@@ -1,0 +1,128 @@
+name: Check FFmpeg Updates
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly, Monday 6am UTC
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to update"
+        required: true
+        type: string
+      ffmpeg_version:
+        description: "New FFmpeg version"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: check-updates-${{ inputs.branch || 'detect' }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+
+jobs:
+  # ── Cron mode: detect new patch releases and dispatch per branch ──
+  detect:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check all branches for FFmpeg updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          check_branch() {
+            local BRANCH="$1"
+            local CURRENT
+
+            if [[ "$BRANCH" == "main" ]]; then
+              CURRENT=$(tr -d '[:space:]' < FFMPEG_VERSION)
+            else
+              CURRENT=$(git show "origin/${BRANCH}:FFMPEG_VERSION" 2>/dev/null | tr -d '[:space:]')
+            fi
+            [[ -z "$CURRENT" ]] && return
+
+            local SERIES="${CURRENT%.*}"
+            local LATEST
+            LATEST=$(git ls-remote --tags https://git.ffmpeg.org/ffmpeg.git "refs/tags/n${SERIES}.*" \
+              | sed 's|.*refs/tags/n||' \
+              | sort -V \
+              | tail -1)
+
+            if [[ -n "$LATEST" && "$LATEST" != "$CURRENT" ]]; then
+              echo "Update available for ${BRANCH}: ${CURRENT} -> ${LATEST}"
+              gh workflow run check-updates.yml \
+                -f branch="$BRANCH" \
+                -f ffmpeg_version="$LATEST"
+            else
+              echo "No update for ${BRANCH} (current: ${CURRENT})"
+            fi
+          }
+
+          check_branch main
+
+          for BRANCH in $(git branch -r --list 'origin/release/*' | sed 's|origin/||' | tr -d ' '); do
+            check_branch "$BRANCH"
+          done
+
+  # ── Dispatch mode: build, verify, then commit + tag + publish ──
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/build.yml
+    with:
+      ffmpeg_version: ${{ inputs.ffmpeg_version }}
+      package_version: ${{ inputs.ffmpeg_version }}
+      ref: ${{ inputs.branch }}
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Commit version bump
+        run: |
+          echo "${{ inputs.ffmpeg_version }}" > FFMPEG_VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add FFMPEG_VERSION
+          git commit -m "Bump FFmpeg to ${{ inputs.ffmpeg_version }}"
+          git push origin "${{ inputs.branch }}"
+
+      - name: Create tag
+        run: |
+          git tag "v${{ inputs.ffmpeg_version }}"
+          git push origin "v${{ inputs.ffmpeg_version }}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: out
+
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: NuGet push
+        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
