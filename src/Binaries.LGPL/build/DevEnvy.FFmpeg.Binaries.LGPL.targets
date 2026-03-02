@@ -7,4 +7,13 @@
           DestinationFiles="@(_FFmpegFiles->'$(OutDir)ffmpeg\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
+
+  <Target Name="PublishFFmpegBinaries" AfterTargets="Publish">
+    <ItemGroup>
+      <_FFmpegPublishFiles Include="$(MSBuildThisFileDirectory)..\ffmpeg\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_FFmpegPublishFiles)"
+          DestinationFiles="@(_FFmpegPublishFiles->'$(PublishDir)ffmpeg\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
