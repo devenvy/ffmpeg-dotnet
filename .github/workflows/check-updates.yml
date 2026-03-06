@@ -54,6 +54,7 @@ jobs:
             local SERIES="${CURRENT%.*}"
             local LATEST
             LATEST=$(git ls-remote --tags https://git.ffmpeg.org/ffmpeg.git "refs/tags/n${SERIES}.*" \
+              | grep -v '\^{}' \
               | sed 's|.*refs/tags/n||' \
               | sort -V \
               | tail -1)
