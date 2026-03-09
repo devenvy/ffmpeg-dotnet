@@ -1,5 +1,8 @@
 name: Build FFmpeg (reusable)
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
