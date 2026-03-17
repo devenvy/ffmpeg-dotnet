@@ -22,5 +22,7 @@ Ubuntu uses glibc and Alpine uses musl; native binaries are not ABI-compatible a
 ## Local script entry points
 
 - `scripts/build-ffmpeg-linux-gnu.sh`
+- `scripts/build-ffmpeg-linux-gnu-arm64.sh`
 - `scripts/build-ffmpeg-linux-musl.sh`
-- `scripts/build-ffmpeg-msys2.sh`
+- `scripts/build-ffmpeg-win64.sh`
+- `scripts/build-ffmpeg-osx.sh`

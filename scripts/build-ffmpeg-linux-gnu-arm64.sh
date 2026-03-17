@@ -27,6 +27,7 @@ sudo apt-get install -y --no-install-recommends \
   libdrm-dev \
   libtool \
   libva-dev \
+  libvulkan-dev \
   nasm \
   pkg-config \
   xz-utils
@@ -45,6 +46,19 @@ cd nv-codec-headers
 make install PREFIX="${DEPS_DIR}"
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+VULKAN_FLAGS=()
+HWACCEL_FEATURES="CUDA NVENC NVDEC VAAPI libdrm V4L2-M2M"
+if pkg-config --exists vulkan; then
+  VULKAN_VERSION="$(pkg-config --modversion vulkan || echo unknown)"
+  VULKAN_FLAGS+=(--enable-vulkan)
+  VULKAN_STATUS="required and enabled (headers ${VULKAN_VERSION})"
+  HWACCEL_FEATURES="${HWACCEL_FEATURES} Vulkan"
+  echo "Vulkan support enabled (${VULKAN_VERSION})"
+else
+  echo "Vulkan support is required, but compatible Vulkan headers were not detected." >&2
+  exit 1
+fi
 
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
 
@@ -80,6 +94,7 @@ echo "Configuring FFmpeg..."
   --enable-vaapi \
   --enable-libdrm \
   --enable-v4l2-m2m \
+  "${VULKAN_FLAGS[@]}" \
   --extra-cflags="-I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
@@ -96,9 +111,10 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native Linux ARM64 glibc (LGPL shared)
-Hardware acceleration: CUDA NVENC NVDEC VAAPI libdrm V4L2-M2M
+Hardware acceleration: ${HWACCEL_FEATURES}
+Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-v4l2-m2m
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-v4l2-m2m ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

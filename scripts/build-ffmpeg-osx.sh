@@ -14,7 +14,20 @@ OUT_DIR="${ROOT_DIR}/artifacts/${RID}/native"
 mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 
 # Install build dependencies via Homebrew
-brew install nasm yasm pkg-config || true
+brew install nasm yasm pkg-config vulkan-headers || true
+
+VULKAN_FLAGS=()
+HWACCEL_FEATURES="VideoToolbox AudioToolbox"
+if pkg-config --exists vulkan; then
+  VULKAN_VERSION="$(pkg-config --modversion vulkan || echo unknown)"
+  VULKAN_FLAGS+=(--enable-vulkan)
+  VULKAN_STATUS="required and enabled (headers ${VULKAN_VERSION})"
+  HWACCEL_FEATURES="${HWACCEL_FEATURES} Vulkan"
+  echo "Vulkan support enabled (${VULKAN_VERSION})"
+else
+  echo "Vulkan support is required, but compatible Vulkan headers were not detected." >&2
+  exit 1
+fi
 
 cd "${WORK_DIR}"
 rm -rf "${SRC_DIR}" "${PREFIX_DIR}"
@@ -41,7 +54,8 @@ echo "Configuring FFmpeg..."
   --disable-nonfree \
   --disable-autodetect \
   --enable-videotoolbox \
-  --enable-audiotoolbox
+  --enable-audiotoolbox \
+  "${VULKAN_FLAGS[@]}"
 
 echo "Building FFmpeg..."
 make -j"$(sysctl -n hw.ncpu)"
@@ -57,9 +71,10 @@ cat > "${ROOT_DIR}/artifacts/${RID}/build-info.txt" <<EOF
 FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Native macOS (LGPL shared)
-Hardware acceleration: VideoToolbox AudioToolbox
+Hardware acceleration: ${HWACCEL_FEATURES}
+Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

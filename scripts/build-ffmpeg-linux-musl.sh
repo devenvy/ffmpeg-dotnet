@@ -21,6 +21,13 @@ mkdir -p "${WORK_DIR}" "${OUT_DIR}"
 DEPS_DIR="${WORK_DIR}/deps"
 mkdir -p "${DEPS_DIR}"
 
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  git \
+  libvulkan-dev \
+  pkg-config \
+  xz-utils
+
 # ?? Hardware acceleration headers ??????????????????????????????????????????????
 
 # nv-codec-headers (MIT � compile-time headers for NVENC/NVDEC/CUDA)
@@ -32,6 +39,19 @@ cd nv-codec-headers
 make install PREFIX="${DEPS_DIR}"
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+VULKAN_FLAGS=()
+HWACCEL_FEATURES="CUDA NVENC NVDEC"
+if pkg-config --exists vulkan; then
+  VULKAN_VERSION="$(pkg-config --modversion vulkan || echo unknown)"
+  VULKAN_FLAGS+=(--enable-vulkan)
+  VULKAN_STATUS="required and enabled (headers ${VULKAN_VERSION})"
+  HWACCEL_FEATURES="${HWACCEL_FEATURES} Vulkan"
+  echo "Vulkan support enabled (${VULKAN_VERSION})"
+else
+  echo "Vulkan support is required, but compatible Vulkan headers were not detected." >&2
+  exit 1
+fi
 
 # ?? FFmpeg ?????????????????????????????????????????????????????????????????????
 
@@ -65,6 +85,7 @@ echo "Configuring FFmpeg..."
   --enable-nvenc \
   --enable-nvdec \
   --enable-ffnvcodec \
+  "${VULKAN_FLAGS[@]}" \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include"
 
 echo "Building FFmpeg..."
@@ -82,9 +103,10 @@ FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Build type: Linux musl (cross-compiled, LGPL shared)
 Compiler: ${CC}
-Hardware acceleration: CUDA NVENC NVDEC
+Hardware acceleration: ${HWACCEL_FEATURES}
+Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
