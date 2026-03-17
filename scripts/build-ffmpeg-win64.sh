@@ -110,6 +110,7 @@ rm -rf Vulkan-Headers
 git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
 mkdir -p "${DEPS_DIR}/include" "${DEPS_DIR}/lib/pkgconfig"
 cp -r Vulkan-Headers/include/vulkan "${DEPS_DIR}/include/"
+cp -r Vulkan-Headers/include/vk_video "${DEPS_DIR}/include/"
 
 VULKAN_HEADER_FILE="${DEPS_DIR}/include/vulkan/vulkan_core.h"
 VULKAN_HEADER_REV="$(awk '/^#define VK_HEADER_VERSION / { print $3; exit }' "${VULKAN_HEADER_FILE}")"
