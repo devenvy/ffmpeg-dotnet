@@ -26,6 +26,9 @@ All hardware acceleration is enabled via **compile-time headers** (MIT-licensed)
 | **MediaFoundation** | Y | - | - | - | - |
 | **AudioToolbox** | - | - | - | - | Y |
 | **libdrm** | - | Y | Y | - | - |
+| **Vulkan** | Y | Y | Y | Y | Y* |
+
+\* macOS Vulkan support depends on a Vulkan runtime such as MoltenVK being present at execution time.
 
 ## Usage
 
@@ -41,6 +44,7 @@ At runtime, native libraries are resolved from `ffmpeg/<rid>/` relative to the a
 
 - This package supports both dynamic-linking scenarios (e.g. FFmpeg.AutoGen) and CLI-driven scenarios (e.g. FFMpegCore).
 - This package includes a dependency on a compatible `FFmpeg.AutoGen` version, so consumers get the matching binding package transitively.
+- Vulkan support is enabled with Khronos Vulkan headers at build time. Actual Vulkan acceleration and Vulkan Video codec availability depend on the target system's driver/runtime support.
 - If you need strict LGPL-only distribution, keep FFmpeg configured with:
   - `--disable-gpl`
   - `--disable-nonfree`

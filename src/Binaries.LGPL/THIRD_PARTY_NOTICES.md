@@ -32,6 +32,11 @@ the actual hardware drivers are loaded at runtime via dlopen / COM / system fram
 - License: MIT
 - Purpose: Compile-time headers for AMD hardware encoding (Windows only)
 
+### Vulkan-Headers
+- Project: https://github.com/KhronosGroup/Vulkan-Headers
+- License: Apache-2.0
+- Purpose: Compile-time headers for FFmpeg Vulkan support and Vulkan Video capability detection
+
 ## Hardware acceleration libraries (statically linked dispatcher)
 
 The following MIT-licensed library is compiled as a **static archive** and linked into

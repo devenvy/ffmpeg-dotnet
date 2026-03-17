@@ -38,3 +38,7 @@ Build scripts intentionally use shared-library and non-GPL configure options:
 - `--disable-static`
 - `--disable-gpl`
 - `--disable-nonfree`
+
+## Hardware notes
+
+Vulkan support is required by the build scripts. If a build environment cannot provide compatible Vulkan headers, the build now fails instead of producing a reduced-feature package. This remains within the repository's LGPL posture because the package ships FFmpeg as shared libraries with `--disable-gpl` and `--disable-nonfree`, and Vulkan is enabled via compile-time headers plus runtime driver loading.

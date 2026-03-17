@@ -103,7 +103,50 @@ Libs: -L\${libdir} -lvpl -lole32 -lgdi32 -luuid -lstdc++
 Cflags: -I\${includedir} -I\${includedir}/vpl
 PKGCONFIG
 
+# Vulkan-Headers (Apache-2.0 – compile-time headers for Vulkan hwcontext/video)
+echo "Installing Vulkan-Headers..."
+cd "${WORK_DIR}"
+rm -rf Vulkan-Headers
+git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+mkdir -p "${DEPS_DIR}/include" "${DEPS_DIR}/lib/pkgconfig"
+cp -r Vulkan-Headers/include/vulkan "${DEPS_DIR}/include/"
+cp -r Vulkan-Headers/include/vk_video "${DEPS_DIR}/include/"
+
+VULKAN_HEADER_FILE="${DEPS_DIR}/include/vulkan/vulkan_core.h"
+VULKAN_HEADER_REV="$(awk '/^#define VK_HEADER_VERSION / { print $3; exit }' "${VULKAN_HEADER_FILE}")"
+if grep -q '^#define VK_API_VERSION_1_4 ' "${VULKAN_HEADER_FILE}"; then
+  VULKAN_API_VERSION="1.4"
+elif grep -q '^#define VK_API_VERSION_1_3 ' "${VULKAN_HEADER_FILE}"; then
+  VULKAN_API_VERSION="1.3"
+elif grep -q '^#define VK_API_VERSION_1_2 ' "${VULKAN_HEADER_FILE}"; then
+  VULKAN_API_VERSION="1.2"
+else
+  VULKAN_API_VERSION="1.1"
+fi
+VULKAN_PC_VERSION="${VULKAN_API_VERSION}.${VULKAN_HEADER_REV}"
+cat > "${DEPS_DIR}/lib/pkgconfig/vulkan.pc" <<PKGCONFIG
+prefix=${DEPS_DIR}
+includedir=\${prefix}/include
+
+Name: Vulkan-Headers
+Description: Vulkan header-only SDK for FFmpeg configure checks
+Version: ${VULKAN_PC_VERSION}
+Cflags: -I\${includedir}
+PKGCONFIG
+
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+VULKAN_FLAGS=()
+HWACCEL_FEATURES="CUDA NVENC NVDEC D3D11VA DXVA2 AMF QSV(libvpl) MediaFoundation"
+if pkg-config --exists vulkan; then
+  VULKAN_FLAGS+=(--enable-vulkan)
+  VULKAN_STATUS="required and enabled (headers ${VULKAN_PC_VERSION})"
+  HWACCEL_FEATURES="${HWACCEL_FEATURES} Vulkan"
+  echo "Vulkan support enabled (${VULKAN_PC_VERSION})"
+else
+  echo "Vulkan support is required, but compatible Vulkan headers were not detected." >&2
+  exit 1
+fi
 
 # ── FFmpeg ─────────────────────────────────────────────────────────────────────
 
@@ -132,6 +175,7 @@ echo "Configuring FFmpeg..."
   --disable-static \
   --disable-doc \
   --disable-debug \
+  --enable-w32threads \
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
@@ -145,6 +189,7 @@ echo "Configuring FFmpeg..."
   --enable-amf \
   --enable-libvpl \
   --enable-mediafoundation \
+  "${VULKAN_FLAGS[@]}" \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include" \
   --extra-cxxflags="${CXXFLAGS}" \
   --extra-ldflags="${LDFLAGS}"
@@ -164,9 +209,10 @@ FFmpeg version: ${FFMPEG_VERSION}
 RID: ${RID}
 Toolchain: ${CROSS_PREFIX}
 Build type: Cross-compiled from Linux (LGPL shared)
-Hardware acceleration: CUDA NVENC NVDEC D3D11VA DXVA2 AMF QSV(libvpl) MediaFoundation
+Hardware acceleration: ${HWACCEL_FEATURES}
+Vulkan: ${VULKAN_STATUS}
 Configure flags:
---cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-libvpl --enable-mediafoundation
+--cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-w32threads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-libvpl --enable-mediafoundation ${VULKAN_FLAGS[*]}
 CFLAGS: ${CFLAGS}
 LDFLAGS: ${LDFLAGS}
 EOF
