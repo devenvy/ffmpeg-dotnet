@@ -38,15 +38,29 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake git mingw-w64 nasm ninja-build pkg-config curl xz-utils yasm
       - name: Build FFmpeg for Windows
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/win-x64/logs
           chmod +x scripts/build-ffmpeg-win64.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
-            ./scripts/build-ffmpeg-win64.sh
+            ./scripts/build-ffmpeg-win64.sh 2>&1 | tee artifacts/win-x64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: win-x64-native
           path: artifacts/win-x64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: win-x64-diagnostics
+          path: |
+            artifacts/win-x64/build-info.txt
+            artifacts/win-x64/logs/build.log
+            .build/win-x64/src/ffbuild/config.log
+            .build/win-x64/src/ffbuild/config.mak
+            .build/win-x64/src/config.h
+          if-no-files-found: warn
 
   build-linux-x64:
     runs-on: ubuntu-latest
@@ -55,15 +69,29 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for Linux (glibc)
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/linux-x64/logs
           chmod +x scripts/build-ffmpeg-linux-gnu.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
-            ./scripts/build-ffmpeg-linux-gnu.sh
+            ./scripts/build-ffmpeg-linux-gnu.sh 2>&1 | tee artifacts/linux-x64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x64-native
           path: artifacts/linux-x64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-x64-diagnostics
+          path: |
+            artifacts/linux-x64/build-info.txt
+            artifacts/linux-x64/logs/build.log
+            .build/linux-x64/src/ffbuild/config.log
+            .build/linux-x64/src/ffbuild/config.mak
+            .build/linux-x64/src/config.h
+          if-no-files-found: warn
 
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -72,15 +100,29 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for Linux ARM64 (glibc)
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/linux-arm64/logs
           chmod +x scripts/build-ffmpeg-linux-gnu-arm64.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
-            ./scripts/build-ffmpeg-linux-gnu-arm64.sh
+            ./scripts/build-ffmpeg-linux-gnu-arm64.sh 2>&1 | tee artifacts/linux-arm64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64-native
           path: artifacts/linux-arm64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-diagnostics
+          path: |
+            artifacts/linux-arm64/build-info.txt
+            artifacts/linux-arm64/logs/build.log
+            .build/linux-arm64/src/ffbuild/config.log
+            .build/linux-arm64/src/ffbuild/config.mak
+            .build/linux-arm64/src/config.h
+          if-no-files-found: warn
 
   build-linux-musl-x64:
     runs-on: ubuntu-latest
@@ -94,15 +136,29 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             git musl-tools nasm pkg-config curl xz-utils yasm
       - name: Build FFmpeg for Linux (musl)
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/linux-musl-x64/logs
           chmod +x scripts/build-ffmpeg-linux-musl.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
-            ./scripts/build-ffmpeg-linux-musl.sh
+            ./scripts/build-ffmpeg-linux-musl.sh 2>&1 | tee artifacts/linux-musl-x64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: linux-musl-x64-native
           path: artifacts/linux-musl-x64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-musl-x64-diagnostics
+          path: |
+            artifacts/linux-musl-x64/build-info.txt
+            artifacts/linux-musl-x64/logs/build.log
+            .build/linux-musl-x64/src/ffbuild/config.log
+            .build/linux-musl-x64/src/ffbuild/config.mak
+            .build/linux-musl-x64/src/config.h
+          if-no-files-found: warn
 
   build-osx-x64:
     runs-on: macos-15-intel
@@ -111,16 +167,30 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for macOS x64
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/osx-x64/logs
           chmod +x scripts/build-ffmpeg-osx.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             RID=osx-x64 \
-            ./scripts/build-ffmpeg-osx.sh
+            ./scripts/build-ffmpeg-osx.sh 2>&1 | tee artifacts/osx-x64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: osx-x64-native
           path: artifacts/osx-x64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osx-x64-diagnostics
+          path: |
+            artifacts/osx-x64/build-info.txt
+            artifacts/osx-x64/logs/build.log
+            .build/osx-x64/src/ffbuild/config.log
+            .build/osx-x64/src/ffbuild/config.mak
+            .build/osx-x64/src/config.h
+          if-no-files-found: warn
 
   build-osx-arm64:
     runs-on: macos-latest
@@ -129,16 +199,30 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
       - name: Build FFmpeg for macOS ARM64
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artifacts/osx-arm64/logs
           chmod +x scripts/build-ffmpeg-osx.sh
           FFMPEG_VERSION="${{ inputs.ffmpeg_version }}" \
             RID=osx-arm64 \
-            ./scripts/build-ffmpeg-osx.sh
+            ./scripts/build-ffmpeg-osx.sh 2>&1 | tee artifacts/osx-arm64/logs/build.log
       - uses: actions/upload-artifact@v4
         with:
           name: osx-arm64-native
           path: artifacts/osx-arm64/native
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osx-arm64-diagnostics
+          path: |
+            artifacts/osx-arm64/build-info.txt
+            artifacts/osx-arm64/logs/build.log
+            .build/osx-arm64/src/ffbuild/config.log
+            .build/osx-arm64/src/ffbuild/config.mak
+            .build/osx-arm64/src/config.h
+          if-no-files-found: warn
 
   pack:
     runs-on: ubuntu-latest

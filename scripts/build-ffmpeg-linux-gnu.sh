@@ -23,7 +23,6 @@ sudo apt-get install -y --no-install-recommends \
   libdrm-dev \
   libtool \
   libva-dev \
-  libvulkan-dev \
   libvdpau-dev \
   libvpl-dev \
   nasm \
@@ -43,6 +42,35 @@ rm -rf nv-codec-headers
 git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
 cd nv-codec-headers
 make install PREFIX="${DEPS_DIR}"
+
+# Vulkan-Headers (Apache-2.0 – compile-time headers for Vulkan hwcontext/video)
+echo "Installing Vulkan-Headers..."
+cd "${WORK_DIR}"
+rm -rf Vulkan-Headers
+git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+mkdir -p "${DEPS_DIR}/include" "${DEPS_DIR}/lib/pkgconfig"
+cp -r Vulkan-Headers/include/vulkan "${DEPS_DIR}/include/"
+
+VULKAN_HEADER_FILE="${DEPS_DIR}/include/vulkan/vulkan_core.h"
+VULKAN_HEADER_REV="$(awk '/^#define VK_HEADER_VERSION / { print $3; exit }' "${VULKAN_HEADER_FILE}")"
+if grep -q '^#define VK_API_VERSION_1_4 ' "${VULKAN_HEADER_FILE}"; then
+  VULKAN_API_VERSION="1.4"
+elif grep -q '^#define VK_API_VERSION_1_3 ' "${VULKAN_HEADER_FILE}"; then
+  VULKAN_API_VERSION="1.3"
+else
+  echo "Vulkan support requires Vulkan 1.3+ headers." >&2
+  exit 1
+fi
+VULKAN_PC_VERSION="${VULKAN_API_VERSION}.${VULKAN_HEADER_REV}"
+cat > "${DEPS_DIR}/lib/pkgconfig/vulkan.pc" <<PKGCONFIG
+prefix=${DEPS_DIR}
+includedir=\${prefix}/include
+
+Name: Vulkan-Headers
+Description: Vulkan header-only SDK for FFmpeg configure checks
+Version: ${VULKAN_PC_VERSION}
+Cflags: -I\${includedir}
+PKGCONFIG
 
 export PKG_CONFIG_PATH="${DEPS_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
@@ -82,6 +110,7 @@ echo "Configuring FFmpeg..."
   --disable-doc \
   --disable-debug \
   --enable-pic \
+  --enable-pthreads \
   --disable-gpl \
   --disable-nonfree \
   --disable-autodetect \
@@ -115,7 +144,7 @@ Build type: Native Linux glibc (LGPL shared)
 Hardware acceleration: ${HWACCEL_FEATURES}
 Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-vdpau --enable-libdrm --enable-libvpl --enable-v4l2-m2m ${VULKAN_FLAGS[*]}
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-vdpau --enable-libdrm --enable-libvpl --enable-v4l2-m2m ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
