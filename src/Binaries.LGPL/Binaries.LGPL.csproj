@@ -24,6 +24,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="8.0.0" />
+		<PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="8.0.0.1" />
 	</ItemGroup>
 </Project>
