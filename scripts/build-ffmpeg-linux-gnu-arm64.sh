@@ -124,6 +124,7 @@ echo "Configuring FFmpeg..."
   --enable-vaapi \
   --enable-libdrm \
   --enable-v4l2-m2m \
+  --enable-postproc \
   "${VULKAN_FLAGS[@]}" \
   --extra-cflags="-I${DEPS_DIR}/include"
 
@@ -144,7 +145,7 @@ Build type: Native Linux ARM64 glibc (LGPL shared)
 Hardware acceleration: ${HWACCEL_FEATURES}
 Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-v4l2-m2m ${VULKAN_FLAGS[*]}
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-vaapi --enable-libdrm --enable-v4l2-m2m --enable-postproc ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
