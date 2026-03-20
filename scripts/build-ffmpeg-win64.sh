@@ -189,7 +189,6 @@ echo "Configuring FFmpeg..."
   --enable-amf \
   --enable-libvpl \
   --enable-mediafoundation \
-  --enable-postproc \
   "${VULKAN_FLAGS[@]}" \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include" \
   --extra-cxxflags="${CXXFLAGS}" \
@@ -213,7 +212,7 @@ Build type: Cross-compiled from Linux (LGPL shared)
 Hardware acceleration: ${HWACCEL_FEATURES}
 Vulkan: ${VULKAN_STATUS}
 Configure flags:
---cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-w32threads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-libvpl --enable-mediafoundation --enable-postproc ${VULKAN_FLAGS[*]}
+--cross-prefix=${CROSS_PREFIX}- --arch=x86_64 --target-os=mingw32 --enable-cross-compile --enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-w32threads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-d3d11va --enable-dxva2 --enable-amf --enable-libvpl --enable-mediafoundation ${VULKAN_FLAGS[*]}
 CFLAGS: ${CFLAGS}
 LDFLAGS: ${LDFLAGS}
 EOF

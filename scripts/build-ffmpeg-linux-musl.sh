@@ -115,7 +115,6 @@ echo "Configuring FFmpeg..."
   --enable-nvenc \
   --enable-nvdec \
   --enable-ffnvcodec \
-  --enable-postproc \
   "${VULKAN_FLAGS[@]}" \
   --extra-cflags="${CFLAGS} -I${DEPS_DIR}/include"
 
@@ -137,7 +136,7 @@ Compiler: ${CC}
 Hardware acceleration: ${HWACCEL_FEATURES}
 Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-postproc ${VULKAN_FLAGS[*]}
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-cuda --enable-cuvid --enable-nvenc --enable-nvdec --enable-ffnvcodec ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"

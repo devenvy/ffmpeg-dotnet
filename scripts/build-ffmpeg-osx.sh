@@ -87,7 +87,6 @@ echo "Configuring FFmpeg..."
   --disable-autodetect \
   --enable-videotoolbox \
   --enable-audiotoolbox \
-  --enable-postproc \
   "${VULKAN_FLAGS[@]}" \
   --extra-cflags="-I${WORK_DIR}/deps/include"
 
@@ -108,7 +107,7 @@ Build type: Native macOS (LGPL shared)
 Hardware acceleration: ${HWACCEL_FEATURES}
 Vulkan: ${VULKAN_STATUS}
 Configure flags:
---enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox --enable-postproc ${VULKAN_FLAGS[*]}
+--enable-ffmpeg --enable-ffprobe --disable-ffplay --enable-shared --disable-static --disable-doc --disable-debug --enable-pic --enable-pthreads --disable-gpl --disable-nonfree --disable-autodetect --enable-videotoolbox --enable-audiotoolbox ${VULKAN_FLAGS[*]}
 EOF
 
 echo "Done! FFmpeg binaries in ${OUT_DIR}"
