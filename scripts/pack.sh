@@ -78,7 +78,13 @@ declare -A PACKAGE_CELL=(
   [gplv3]=GPLv3
 )
 
-read -ra ARTIFACTS <<< "${RIDS:-win-x64 win-arm64 linux-x64 linux-arm64 linux-armhf linux-musl-x64 linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64}"
+# RIDS="" is meaningful: pack iOS on its own, without dragging in a RID-native
+# platform just to satisfy the loop.
+if [[ -n "${RIDS+set}" && -z "${RIDS// /}" ]]; then
+  ARTIFACTS=()
+else
+  read -ra ARTIFACTS <<< "${RIDS:-win-x64 win-arm64 linux-x64 linux-arm64 linux-armhf linux-musl-x64 linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64}"
+fi
 read -ra CELL_LIST <<< "${CELLS:-lgplv2 lgplv3 gplv2 gplv3}"
 PACK_IOS="${PACK_IOS:-1}"
 

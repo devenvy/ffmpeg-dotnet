@@ -1,0 +1,243 @@
+name: Smoke test
+
+# Proves the shipped binaries actually load and run on each platform, rather
+# than merely being present in the package. Package contents are checked by
+# verify-packages.sh; this checks that a real .NET app can use them.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CELL: lgplv2
+  PKG_CELL: LGPLv2
+  PKG_VERSION: 0.0.0-ci
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "tag=$(jq -r '.series["9.0"]' versions.json)" >> "$GITHUB_OUTPUT"
+
+  # One package per job so each platform downloads ~30 MB instead of the ~415 MB
+  # the whole cell weighs.
+  pack:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact:
+          - win-x64
+          - win-arm64
+          - linux-x64
+          - linux-arm64
+          - linux-armhf
+          - linux-musl-x64
+          - linux-musl-arm64
+          - osx-x64
+          - osx-arm64
+          - android-arm64
+          - android-x64
+          - ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Pack ${{ matrix.artifact }}
+        run: |
+          if [[ "${{ matrix.artifact }}" == "ios" ]]; then
+            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase base
+          else
+            RIDS="${{ matrix.artifact }}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase base
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.artifact }}
+          path: out/*.nupkg
+          retention-days: 1
+
+  pack-meta:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: CELLS="$CELL" bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase meta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-meta
+          path: out/*.nupkg
+          retention-days: 1
+
+  # Native hosted runners: the binary under test is executed on the hardware and
+  # libc it was built for.
+  native:
+    needs: [pack, pack-meta]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,     os: windows-latest }
+          - { rid: win-arm64,   os: windows-11-arm }
+          - { rid: linux-x64,   os: ubuntu-latest }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm }
+          - { rid: osx-x64,     os: macos-15-intel }
+          - { rid: osx-arm64,   os: macos-latest }
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-${{ matrix.rid }}, path: feed }
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-meta, path: feed }
+      - name: Smoke test
+        shell: bash
+        run: bash scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+
+  # musl has no dedicated runner, but an Alpine container on the matching
+  # architecture runs natively - this is containerization, not emulation.
+  musl:
+    needs: [pack, pack-meta]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-musl-x64,   os: ubuntu-latest }
+          - { rid: linux-musl-arm64, os: ubuntu-24.04-arm }
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-${{ matrix.rid }}, path: feed }
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-meta, path: feed }
+      # Not `container:` - actions/checkout needs Node, which the Alpine SDK
+      # image does not ship. Running docker explicitly keeps the checkout and
+      # artifact steps on the host.
+      - name: Smoke test in Alpine
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+
+  # 32-bit ARM is the one RID with no hosted runner, native or containerized.
+  armhf:
+    needs: [pack, pack-meta]
+    name: linux-arm (qemu)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-linux-armhf, path: feed }
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-meta, path: feed }
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - name: Smoke test under linux/arm/v7
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/w" -w /w \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            sh scripts/run-smoke-test.sh linux-arm ./feed
+
+  # Android and iOS cannot run the console smoke test, so these assert the thing
+  # that is actually unproven: that the platform SDK picks the payload up and
+  # embeds it in the app. A .so that reaches lib/<abi>/ inside the APK is one the
+  # runtime linker will find; a framework inside the .app bundle is one the
+  # dynamic loader will find.
+  android:
+    needs: [pack, pack-meta]
+    name: android-${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: android-arm64, abi: arm64, jni: arm64-v8a }
+          - { rid: android-x64,   abi: x64,   jni: x86_64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-${{ matrix.rid }}, path: feed }
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-meta, path: feed }
+
+      - run: dotnet workload install android --skip-sign-check
+
+      - name: Build an Android head and inspect the APK
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh android "$PWD/feed" "${{ matrix.rid }}"
+          cd .mobile/android
+          dotnet build -c Release -f net10.0-android -r ${{ matrix.rid }} \
+            -p:AndroidPackageFormat=apk
+
+          apk=$(find . -name '*-Signed.apk' -o -name '*.apk' | head -1)
+          echo "APK: ${apk}"
+          unzip -l "${apk}" | grep -E "lib/${{ matrix.jni }}/" | sed 's/^/  /'
+
+          for lib in libavcodec.so libavutil.so libc++_shared.so; do
+            unzip -l "${apk}" | grep -q "lib/${{ matrix.jni }}/${lib}" \
+              || { echo "FAIL: ${lib} missing from lib/${{ matrix.jni }}/ in the APK"; exit 1; }
+          done
+          echo "PASS: FFmpeg libraries and libc++_shared are packed into the APK"
+
+  ios:
+    needs: [pack, pack-meta]
+    name: ios
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-ios, path: feed }
+      - uses: actions/download-artifact@v4
+        with: { name: pkg-meta, path: feed }
+
+      - run: dotnet workload install ios --skip-sign-check
+
+      - name: Build an iOS head and inspect the app bundle
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh ios "$PWD/feed" iossimulator-arm64
+          cd .mobile/ios
+          dotnet build -c Release -f net10.0-ios -r iossimulator-arm64
+
+          app=$(find . -name '*.app' -type d | head -1)
+          echo "App bundle: ${app}"
+          ls "${app}/Frameworks" | sed 's/^/  /'
+
+          for fw in libavcodec libavutil libavformat; do
+            test -e "${app}/Frameworks/${fw}.framework/${fw}" \
+              || { echo "FAIL: ${fw}.framework not embedded in the app bundle"; exit 1; }
+          done
+          echo "PASS: xcframeworks resolved through NativeReference and embedded"
+
+          # The simulator slice must be the one embedded, not the device slice.
+          file "${app}/Frameworks/libavcodec.framework/libavcodec" | sed 's/^/  /'

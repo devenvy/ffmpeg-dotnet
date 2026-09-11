@@ -371,3 +371,5 @@ FodyWeavers.xsd
 /nupkgs/
 /.downloads/
 /.nuspec-gen/
+/.smoke/
+/.mobile/
