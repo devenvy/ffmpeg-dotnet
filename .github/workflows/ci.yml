@@ -24,12 +24,21 @@ jobs:
       - run: dotnet build src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj -c Release
       - run: dotnet format --verify-no-changes src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj
 
-  shellcheck:
-    name: Shellcheck
+  lint:
+    name: Lint scripts and workflows
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: shellcheck scripts/*.sh
+
+      # A malformed workflow file fails silently: GitHub reports "workflow file
+      # issue" with no job, and a scheduled workflow would not surface it until
+      # its next cron. actionlint catches the YAML and the Actions-specific
+      # mistakes, including the shell scripts embedded in run: blocks.
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
 
   # Packs a real subset on Linux and asserts the package layout. Linux matters:
   # Windows tar cannot create symlinks, so the duplicate-library bug the

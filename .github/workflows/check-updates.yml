@@ -37,7 +37,9 @@ jobs:
           UPSTREAM=$(gh release list --repo devenvy/ffmpeg --limit 100 \
             --json tagName --jq '.[].tagName')
 
+          # shellcheck disable=SC2016  # jq program, not a shell expansion
           for series in $(jq -r '.series | keys[]' versions.json); do
+            # shellcheck disable=SC2016
             current=$(jq -r --arg s "$series" '.series[$s]' versions.json)
 
             latest=$(echo "${UPSTREAM}" \
@@ -58,18 +60,26 @@ jobs:
               continue
             fi
 
-            git checkout -B "${branch}" origin/${GITHUB_REF_NAME}
+            git checkout -B "${branch}" "origin/${GITHUB_REF_NAME}"
             jq --arg s "$series" --arg v "$latest" '.series[$s] = $v' versions.json > versions.tmp
             mv versions.tmp versions.json
             git add versions.json
             git commit -m "Bump FFmpeg ${series} series to ${latest}"
             git push -u origin "${branch}"
 
+            # Body written to a file rather than passed inline: a multi-line
+            # string with a line at column 0 terminates the enclosing YAML
+            # block scalar, which silently breaks the whole workflow file.
+            {
+              printf 'Upstream [`%s`](https://github.com/devenvy/ffmpeg/releases/tag/%s) is available (was `%s`).\n\n' \
+                "${latest}" "${latest}" "${current}"
+              printf 'Merging this releases the `%s` series only. Other tracked series are unaffected.\n' \
+                "${series}"
+            } > /tmp/pr-body.md
+
             gh pr create \
               --title "Bump FFmpeg ${series} series to ${latest}" \
-              --body "Upstream [\`${latest}\`](https://github.com/devenvy/ffmpeg/releases/tag/${latest}) is available (was \`${current}\`).
-
-Merging this runs the release workflow for the \`${series}\` series only. Other tracked series are unaffected." \
+              --body-file /tmp/pr-body.md \
               --base "${GITHUB_REF_NAME}" --head "${branch}"
 
             git checkout "${GITHUB_REF_NAME}"

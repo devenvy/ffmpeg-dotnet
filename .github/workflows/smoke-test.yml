@@ -108,9 +108,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
-        with: { name: pkg-${{ matrix.rid }}, path: feed }
+        with:
+          name: pkg-${{ matrix.rid }}
+          path: feed
       - uses: actions/download-artifact@v4
-        with: { name: pkg-meta, path: feed }
+        with:
+          name: pkg-meta
+          path: feed
       - name: Smoke test
         shell: bash
         run: bash scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
@@ -130,9 +134,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: pkg-${{ matrix.rid }}, path: feed }
+        with:
+          name: pkg-${{ matrix.rid }}
+          path: feed
       - uses: actions/download-artifact@v4
-        with: { name: pkg-meta, path: feed }
+        with:
+          name: pkg-meta
+          path: feed
       # Not `container:` - actions/checkout needs Node, which the Alpine SDK
       # image does not ship. Running docker explicitly keeps the checkout and
       # artifact steps on the host.
@@ -148,9 +156,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: pkg-linux-armhf, path: feed }
+        with:
+          name: pkg-linux-armhf
+          path: feed
       - uses: actions/download-artifact@v4
-        with: { name: pkg-meta, path: feed }
+        with:
+          name: pkg-meta
+          path: feed
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm
@@ -182,9 +194,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
-        with: { name: pkg-${{ matrix.rid }}, path: feed }
+        with:
+          name: pkg-${{ matrix.rid }}
+          path: feed
       - uses: actions/download-artifact@v4
-        with: { name: pkg-meta, path: feed }
+        with:
+          name: pkg-meta
+          path: feed
 
       - run: dotnet workload install android --skip-sign-check
 
@@ -216,9 +232,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
-        with: { name: pkg-ios, path: feed }
+        with:
+          name: pkg-ios
+          path: feed
       - uses: actions/download-artifact@v4
-        with: { name: pkg-meta, path: feed }
+        with:
+          name: pkg-meta
+          path: feed
 
       - run: dotnet workload install ios --skip-sign-check
 
@@ -231,7 +251,7 @@ jobs:
 
           app=$(find . -name '*.app' -type d | head -1)
           echo "App bundle: ${app}"
-          ls "${app}/Frameworks" | sed 's/^/  /'
+          find "${app}/Frameworks" -maxdepth 1 -mindepth 1 -exec basename {} \; | sed 's/^/  /'
 
           for fw in libavcodec libavutil libavformat; do
             test -e "${app}/Frameworks/${fw}.framework/${fw}" \
