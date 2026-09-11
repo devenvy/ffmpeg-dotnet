@@ -14,13 +14,23 @@ set -eu
 RID="${1:?Usage: run-smoke-test.sh <rid> <feed-dir>}"
 FEED="${2:?Usage: run-smoke-test.sh <rid> <feed-dir>}"
 
-FEED_ABS=$(cd "${FEED}" && pwd)
+# Git Bash reports /d/a/... where dotnet expects D:\a\..., and feeds it back as
+# the nonsense D:\d\a\... . cygpath exists only on Windows; elsewhere the path
+# passes through untouched.
+to_native_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
+# Two forms of the same directory: the POSIX one for shell tools running under
+# Git Bash, the native one for dotnet.
+FEED_POSIX=$(cd "${FEED}" && pwd)
+FEED_ABS=$(to_native_path "${FEED_POSIX}")
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK="${REPO_ROOT}/.smoke/${RID}"
 
 echo "RID:  ${RID}"
 echo "Feed: ${FEED_ABS}"
-find "${FEED_ABS}" -name '*.nupkg' -exec basename {} \; | sed 's/^/  /'
+find "${FEED_POSIX}" -name '*.nupkg' -exec basename {} \; | sed 's/^/  /'
 echo
 
 rm -rf "${WORK}"
