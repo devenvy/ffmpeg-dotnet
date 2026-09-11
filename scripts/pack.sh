@@ -291,7 +291,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     rid="${RID_FOR_ARTIFACT[${artifact}]}"
     for cell in "${CELL_LIST[@]}"; do
       pc="${PACKAGE_CELL[${cell}]}"
-      "${REPO_ROOT}/scripts/gen-nuspec.sh" runtime "${pc}" "${rid}" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
+      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" runtime "${pc}" "${rid}" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
       dotnet pack "${REPO_ROOT}/src/Packaging/Runtime.csproj" \
         -p:Cell="${pc}" -p:Rid="${rid}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \
         -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/${rid}")/" \
@@ -306,7 +306,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     echo "==> Packing Apple packages"
     for cell in "${CELL_LIST[@]}"; do
       pc="${PACKAGE_CELL[${cell}]}"
-      "${REPO_ROOT}/scripts/gen-nuspec.sh" apple "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
+      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" apple "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
       dotnet pack "${REPO_ROOT}/src/Packaging/Apple.csproj" \
         -p:Cell="${pc}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \
         -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/ios")/" \
@@ -330,7 +330,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "meta" ]]; then
   for cell in "${CELL_LIST[@]}"; do
     pc="${PACKAGE_CELL[${cell}]}"
     for kind in meta-all meta-rid; do
-      "${REPO_ROOT}/scripts/gen-nuspec.sh" "${kind}" "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
+      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" "${kind}" "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
     done
     dotnet pack "${STUB_CSPROJ}" \
       -p:NuspecBasePath=../.. -p:NuspecFile="${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.nuspec" \
