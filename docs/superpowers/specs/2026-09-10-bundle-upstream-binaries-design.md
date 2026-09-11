@@ -1,8 +1,54 @@
 # Bundle upstream FFmpeg binaries
 
-**Status:** approved design, not yet implemented
+**Status:** implemented — see "Revisions during implementation" below
 **Date:** 2026-09-10
 **Verified against:** `devenvy/ffmpeg` releases `9.0.1.5` and `8.1.2.5` (both 2026-09-10)
+
+## Revisions during implementation
+
+The sections below describe the approved design. Eight things changed while building it, each
+because something was measured or reviewed rather than assumed. Where a section further down
+contradicts this list, this list is current.
+
+1. **Added a second meta per cell, `…{Cell}.Rid`, carrying `runtime.json`.** The original design
+   trimmed only what reached `bin/`; the restore still pulled every platform. Measured against
+   real assets that is **415 MB for one cell**. `runtime.json` is NuGet's RID-conditional
+   dependency mechanism and cuts it to one platform (~32 MB). Verified: it fires for
+   `$(RuntimeIdentifier)` and for a project-declared `$(RuntimeIdentifiers)` list — the shape
+   .NET Android uses — and unlike a conditional `PackageReference` it is immune to the
+   difference between `-r` and `-p:RuntimeIdentifier=`. A RID-less build resolves nothing from
+   it, which is why the all-platform meta remains.
+2. **Per-TFM dependency groups dropped.** They existed to keep iOS assets out of server apps.
+   `runtime.json` handles platform selection by RID instead, so the groups — and the NU1012
+   platform-version tax they carry — are unnecessary. The all-platform meta simply does not
+   depend on the Apple package; an iOS head always has a RID and is served by `.Rid`.
+3. **The helper no longer depends on `FFmpeg.AutoGen`.** Codex review: AutoGen's dynamically
+   loaded resolver builds versioned Unix names (`libavcodec.so.61`) and cannot load Android's
+   unversioned `.so` files or iOS frameworks, so depending on it would advertise mobile bindings
+   that do not work. The helper is now pure path resolution; consumers add a binding themselves.
+4. **`legal/` is packed at the package root, never under `runtimes/**/native/`.** Anything below
+   `native/` is a native asset NuGet copies into every consumer's build and publish output.
+5. **`release.yml` is not tag-triggered.** The original design had it triggered by a tag *and*
+   creating that tag, which cannot work. It now runs on a merge to `main` or by hand, and is
+   idempotent: a series is released when its computed version has no `v*` tag yet.
+6. **`our_build` is bounded to 0–99 and fails loudly at 100.** The two counters share one integer
+   only while ours stays in its own range; at 100 it would carry into upstream's digits and claim
+   a build that does not exist.
+7. **`ffmpeg`/`ffprobe` get `chmod +x` from the runtime package's targets.** A `.nupkg` is a zip
+   and NuGet does not carry Unix permissions — the currently published package ships them mode
+   `0644`, so `Process.Start` fails with `EACCES` on Linux and macOS. Verified that `exec` needs
+   the bit and `read` does not, so shared libraries were never affected.
+8. **Package count is 57, not 53** — the four `.Rid` metas, plus the helper, 4 metas, 44 runtime
+   and 4 Apple packages.
+
+One review finding was investigated and **not** acted on. Codex flagged that `linux-musl-x64`
+falls back to `linux-x64` in the RID graph, so the all-platform meta can have NuGet select glibc
+assets from one package and musl assets from another under identical filenames. The RID-graph
+claim is correct and `project.assets.json` confirms both are selected. Empirically the SDK's
+conflict resolution then picks musl, deterministically and independently of `PackageReference`
+order, so the built output is right. It is recorded here as a known smell — correctness rests on
+conflict resolution rather than on not creating the conflict — and `.Rid` avoids it entirely by
+resolving exactly one package.
 
 ## Overview
 

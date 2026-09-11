@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj" />
+  </Folder>
+</Solution>

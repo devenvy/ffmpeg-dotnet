@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <PackageId>DevEnvy.FFmpeg.Binaries</PackageId>
+    <Title>DevEnvy.FFmpeg.Binaries</Title>
+    <Description>Locates the native FFmpeg binaries shipped by the DevEnvy.FFmpeg.Binaries.* packages. Reference a license-cell package (for example DevEnvy.FFmpeg.Binaries.LGPLv2) to get the binaries themselves. Brings no binding library of its own — pair it with FFmpeg.AutoGen or your own P/Invoke.</Description>
+    <Authors>DevEnvy</Authors>
+    <PackageTags>ffmpeg;native;media;video;audio</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

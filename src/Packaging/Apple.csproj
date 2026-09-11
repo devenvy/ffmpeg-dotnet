@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Packs the iOS xcframeworks for one license cell.
+
+    RID-native probing does not apply on iOS: .NET for iOS consumes native code
+    through @(NativeReference), so the bundles ship under frameworks/ and the
+    shipped .targets adds them. Xcode picks the device or simulator slice and
+    strips the unused one from the app.
+  -->
+  <PropertyGroup>
+    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Apple</PackageId>
+    <Description>FFmpeg $(FFmpegVersion) $(Cell) xcframeworks for iOS (device and simulator). Reference DevEnvy.FFmpeg.Binaries.$(Cell).Rid instead of this package directly.</Description>
+    <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
+
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <IsPackable>true</IsPackable>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>NU5128;NU5100</NoWarn>
+
+    <StagingDir Condition="'$(StagingDir)' == ''">$(MSBuildThisFileDirectory)../../staging/$(Cell)/ios/</StagingDir>
+    <TargetsFile Condition="'$(TargetsFile)' == ''">$(MSBuildThisFileDirectory)../../.nuspec-gen/$(PackageId).targets</TargetsFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Globs the whole staging dir, not *.xcframework/**: a wildcard in the
+         directory portion would drop the bundle name from %(RecursiveDir) and
+         flatten all six frameworks on top of each other. -->
+    <None Include="$(StagingDir)**" Exclude="$(StagingDir)legal/**" PackagePath="frameworks/%(RecursiveDir)" Pack="true" />
+    <None Include="$(StagingDir)legal/**" PackagePath="legal/%(RecursiveDir)" Pack="true" />
+    <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
+    <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
+  </ItemGroup>
+
+</Project>

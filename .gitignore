@@ -366,3 +366,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Packaging working directories
+/staging/
+/nupkgs/
+/.downloads/
+/.nuspec-gen/

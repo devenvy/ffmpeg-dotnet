@@ -1,58 +1,137 @@
 name: Release
 
-permissions:
-  contents: read
-
+# Not triggered by a tag: this workflow CREATES the release tag, and a workflow
+# cannot be started by a tag it pushes itself. It runs on a merge to main that
+# touches the version manifest or the packaging, and can be run by hand.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths:
+      - versions.json
+      - src/**
+      - scripts/**
+  workflow_dispatch:
+    inputs:
+      series:
+        description: "Series to release (e.g. 9.0). Empty releases every series whose version is not yet tagged."
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
+  plan:
+    name: Plan releases
+    runs-on: ubuntu-24.04
     outputs:
-      ffmpeg_version: ${{ steps.v.outputs.ffmpeg_version }}
-      package_version: ${{ steps.v.outputs.package_version }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
     steps:
       - uses: actions/checkout@v4
-      - id: v
+        with:
+          fetch-depth: 0
+
+      # Idempotent by design: a series is released when its computed version has
+      # no v* tag yet. Re-running after a partial failure resumes rather than
+      # duplicating, and a no-op merge releases nothing.
+      - id: plan
         run: |
-          echo "ffmpeg_version=$(tr -d '[:space:]' < FFMPEG_VERSION)" >> "$GITHUB_OUTPUT"
-          echo "package_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          entries=()
+          for series in $(jq -r '.series | keys[]' versions.json); do
+            if [[ -n "${{ inputs.series }}" && "${series}" != "${{ inputs.series }}" ]]; then
+              continue
+            fi
+            tag=$(jq -r --arg s "$series" '.series[$s]' versions.json)
+            version=$(bash scripts/compute-version.sh "$tag")
+            if git rev-parse "v${version}" >/dev/null 2>&1; then
+              echo "${series}: v${version} already tagged, skipping"
+              continue
+            fi
+            echo "${series}: will release ${version} from upstream ${tag}"
+            entries+=("{\"series\":\"${series}\",\"upstream\":\"${tag}\",\"version\":\"${version}\"}")
+          done
+          if [[ ${#entries[@]} -eq 0 ]]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            printf 'matrix={"include":[%s]}\n' "$(IFS=,; echo "${entries[*]}")" >> "$GITHUB_OUTPUT"
+          fi
 
-  build:
-    needs: resolve
-    uses: ./.github/workflows/build.yml
-    with:
-      ffmpeg_version: ${{ needs.resolve.outputs.ffmpeg_version }}
-      package_version: ${{ needs.resolve.outputs.package_version }}
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+  release:
+    name: Release ${{ matrix.version }}
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: nuget
-          path: out
+      - name: Resolve FFmpeg.AutoGen version for this series
+        id: autogen
+        run: |
+          resolved=$(curl -fsSL "https://api.nuget.org/v3-flatcontainer/ffmpeg.autogen.bindings.dynamicallyloaded/index.json" \
+            | jq -r '.versions[]' | grep "^${{ matrix.series }}\." | sort -V | tail -1 || true)
+          echo "version=${resolved}" >> "$GITHUB_OUTPUT"
+          echo "FFmpeg.AutoGen for ${{ matrix.series }}: ${resolved:-<none, using default>}"
 
-      - name: NuGet login (OIDC)
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
+      - name: Pack base packages
+        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase base
 
-      - name: NuGet push
-        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Pack meta packages
+        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase meta
+
+      - name: Verify before publishing
+        run: |
+          bash scripts/verify-packages.sh ./nupkgs
+          bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
+
+      - name: Push base packages
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for f in nupkgs/*.nupkg; do
+            case "$(basename "$f")" in
+              *.LGPLv2.[0-9]*|*.LGPLv3.[0-9]*|*.GPLv2.[0-9]*|*.GPLv3.[0-9]*|*.Rid.[0-9]*) continue ;;
+            esac
+            dotnet nuget push "$f" --api-key "$NUGET_KEY" \
+              --source https://api.nuget.org/v3/index.json --skip-duplicate
+          done
+
+      # The metas carry exact dependencies on the packages just pushed and
+      # cannot restore until the feed has indexed them.
+      - name: Push meta packages
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for f in nupkgs/*.LGPLv2.[0-9]*.nupkg nupkgs/*.LGPLv3.[0-9]*.nupkg \
+                   nupkgs/*.GPLv2.[0-9]*.nupkg nupkgs/*.GPLv3.[0-9]*.nupkg \
+                   nupkgs/*.Rid.[0-9]*.nupkg; do
+            [[ -e "$f" ]] || continue
+            dotnet nuget push "$f" --api-key "$NUGET_KEY" \
+              --source https://api.nuget.org/v3/index.json --skip-duplicate
+          done
+
+      - name: Tag and create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag "v${{ matrix.version }}"
+          git push origin "v${{ matrix.version }}"
+          gh release create "v${{ matrix.version }}" \
+            --title "v${{ matrix.version }}" \
+            --notes "FFmpeg ${{ matrix.upstream }} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${{ matrix.upstream }})."

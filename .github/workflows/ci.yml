@@ -1,31 +1,76 @@
 name: CI
 
-permissions:
-  contents: read
-
 on:
   pull_request:
-    branches:
-      - main
-      - "release/**"
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
-    outputs:
-      ffmpeg_version: ${{ steps.v.outputs.ffmpeg_version }}
+  helper:
+    name: Helper library
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - id: v
-        run: echo "ffmpeg_version=$(tr -d '[:space:]' < FFMPEG_VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet build src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj -c Release
+      - run: dotnet format --verify-no-changes src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj
 
-  build:
-    needs: resolve
-    uses: ./.github/workflows/build.yml
-    with:
-      ffmpeg_version: ${{ needs.resolve.outputs.ffmpeg_version }}
-      package_version: "0.0.0-pr"
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh
+
+  # Packs a real subset on Linux and asserts the package layout. Linux matters:
+  # Windows tar cannot create symlinks, so the duplicate-library bug the
+  # normalization guards against does not even reproduce there.
+  pack:
+    name: Pack and verify (${{ matrix.series }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        series: ["9.0", "8.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - id: tag
+        run: echo "tag=$(jq -r '.series["${{ matrix.series }}"]' versions.json)" >> "$GITHUB_OUTPUT"
+
+      # One RID per artifact shape: flat-DLL Windows, symlinked glibc Linux,
+      # musl (whose RID falls back to linux-x64), dylib macOS, and Android with
+      # its NDK ABI directory and bundled headers.
+      - name: Pack representative RIDs
+        run: |
+          RIDS="win-x64 linux-x64 linux-musl-x64 osx-arm64 android-arm64" \
+          CELLS="lgplv2" \
+          bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+
+      - name: Pack metas
+        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase meta
+
+      - name: Verify package contents
+        run: bash scripts/verify-packages.sh ./nupkgs
+
+      - name: Verify consumer restore and build
+        run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nupkgs-${{ matrix.series }}
+          path: nupkgs/*.nupkg
+          retention-days: 7
