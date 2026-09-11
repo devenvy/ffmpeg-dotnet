@@ -29,8 +29,8 @@
     <!-- Globs the whole staging dir, not *.xcframework/**: a wildcard in the
          directory portion would drop the bundle name from %(RecursiveDir) and
          flatten all six frameworks on top of each other. -->
-    <None Include="$(StagingDir)**" Exclude="$(StagingDir)legal/**" PackagePath="frameworks/%(RecursiveDir)" Pack="true" />
-    <None Include="$(StagingDir)legal/**" PackagePath="legal/%(RecursiveDir)" Pack="true" />
+    <None Include="$(StagingDir)**" Exclude="$(StagingDir)legal/**" PackagePath="frameworks/" Pack="true" />
+    <None Include="$(StagingDir)legal/**" PackagePath="legal/" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
   </ItemGroup>
