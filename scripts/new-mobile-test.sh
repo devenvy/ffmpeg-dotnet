@@ -57,7 +57,7 @@ case "${PLATFORM}" in
     <AndroidPackageFormat>apk</AndroidPackageFormat>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Rid" Version="${PKG_VERSION}" />
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Runtime.${RID}" Version="${PKG_VERSION}" />
   </ItemGroup>
 </Project>
 EOF
@@ -99,7 +99,7 @@ EOF
     <CodesignKey></CodesignKey>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Rid" Version="${PKG_VERSION}" />
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Runtime.${RID}" Version="${PKG_VERSION}" />
   </ItemGroup>
 </Project>
 EOF

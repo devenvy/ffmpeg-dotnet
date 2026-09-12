@@ -17,17 +17,19 @@ read -ra TAGS <<< "${TAGS[*]}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="${REPO_ROOT}/.audit"
+EXTRACT="${EXTRACT_DIR:-/tmp/ffaudit}"   # must be a native filesystem: DrvFs reports 0777 for everything
+mkdir -p "${EXTRACT}"
 mkdir -p "${WORK}"
 
-PLATFORMS=(win-x64 win-arm64 linux-x64 linux-arm64 linux-armhf linux-musl-x64
-           linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64 ios)
+# Overridable so a partial re-run can fill gaps without refetching everything.
+read -ra PLATFORMS <<< "${PLATFORMS:-win-x64 win-arm64 linux-x64 linux-arm64 linux-armhf linux-musl-x64 linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64 ios}"
 CELLS=(lgplv2 lgplv3 gplv2 gplv3)
 
 for tag in "${TAGS[@]}"; do
   ffmpeg_version="${tag%.*}"
   base="https://github.com/devenvy/ffmpeg/releases/download/${tag}"
   out="${WORK}/audit-${tag}.jsonl"
-  : > "${out}"
+  [[ "${APPEND:-0}" == "1" ]] || : > "${out}"
 
   echo "==> ${tag}: fetching SHA256SUMS"
   curl -fsSL "${base}/SHA256SUMS" -o "${WORK}/SHA256SUMS-${tag}"
@@ -60,16 +62,16 @@ for tag in "${TAGS[@]}"; do
         continue
       fi
 
-      rm -rf "${WORK}/x" && mkdir -p "${WORK}/x"
-      tar -xzf "${WORK}/a.tar.gz" -C "${WORK}/x" 2>/dev/null
+      rm -rf "${EXTRACT}/x" && mkdir -p "${EXTRACT}/x"
+      tar -xzf "${WORK}/a.tar.gz" -C "${EXTRACT}/x" 2>/dev/null
 
-      python3 "${REPO_ROOT}/scripts/audit-upstream.py" "${WORK}/x" "${platform}-${cell}" \
+      python3 "${REPO_ROOT}/scripts/audit-upstream.py" "${EXTRACT}/x" "${platform}-${cell}" \
         | python3 -c "import json,sys; d=json.load(sys.stdin); d['tag']='${tag}'; print(json.dumps(d))" \
         >> "${out}"
 
       issues=$(tail -1 "${out}" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['issues']))" 2>/dev/null || echo '?')
       echo "${issues} issue(s)"
-      rm -rf "${WORK}/x" "${WORK}/a.tar.gz"
+      rm -rf "${EXTRACT}/x" "${WORK}/a.tar.gz"
     done
   done
   echo "==> wrote ${out}"

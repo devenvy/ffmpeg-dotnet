@@ -11,14 +11,13 @@
   -->
   <PropertyGroup>
     <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.$(Rid)</PackageId>
-    <Description>FFmpeg $(FFmpegVersion) $(Cell) native binaries for $(Rid). Reference DevEnvy.FFmpeg.Binaries.$(Cell) or .Rid instead of this package directly.</Description>
+    <Description>FFmpeg $(FFmpegVersion) $(Cell) native binaries for $(Rid). Reference this directly when your build targets $(Rid), or DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.All when it sets no RuntimeIdentifier.</Description>
     <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>
     <IsPackable>true</IsPackable>
-    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- NU5128: no lib/ folder. Deliberate - this package carries only natives. -->
     <NoWarn>NU5128;NU5100</NoWarn>

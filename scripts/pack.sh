@@ -237,7 +237,7 @@ normalize_android() {
 }
 
 ###############################################################################
-# Phase: base — runtime packages, Apple packages, and the helper
+# Phase: base — the per-platform payload packages and the helper
 ###############################################################################
 if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
   fetch_checksums
@@ -309,17 +309,17 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
   done
 
   if [[ "${PACK_IOS}" == "1" ]]; then
-    echo "==> Packing Apple packages"
+    echo "==> Packing iOS packages"
     for cell in "${CELL_LIST[@]}"; do
       pc="${PACKAGE_CELL[${cell}]}"
-      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" apple "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
+      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" ios "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
       dotnet pack "${REPO_ROOT}/src/Packaging/Apple.csproj" \
         -p:Cell="${pc}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \
         -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/ios")/" \
-        -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Apple.targets")" \
+        -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios.targets")" \
         -p:FFmpegVersion="${FFMPEG_VERSION}" -p:Version="${NUGET_VERSION}" \
         -o "${OUTPUT_DIR}" --nologo -v quiet
-      echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Apple"
+      echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios"
     done
   fi
 fi
@@ -335,16 +335,11 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "meta" ]]; then
   echo "==> Packing meta packages"
   for cell in "${CELL_LIST[@]}"; do
     pc="${PACKAGE_CELL[${cell}]}"
-    for kind in meta-all meta-rid; do
-      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" "${kind}" "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
-    done
+    bash "${REPO_ROOT}/scripts/gen-nuspec.sh" all "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
     dotnet pack "${STUB_CSPROJ}" \
-      -p:NuspecBasePath=../.. -p:NuspecFile="${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.nuspec" \
+      -p:NuspecBasePath=../.. -p:NuspecFile="${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.All.nuspec" \
       -o "${OUTPUT_DIR}" --nologo -v quiet
-    dotnet pack "${STUB_CSPROJ}" \
-      -p:NuspecBasePath=../.. -p:NuspecFile="${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Rid.nuspec" \
-      -o "${OUTPUT_DIR}" --nologo -v quiet
-    echo "  packed DevEnvy.FFmpeg.Binaries.${pc} and .Rid"
+    echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.All"
   done
 fi
 

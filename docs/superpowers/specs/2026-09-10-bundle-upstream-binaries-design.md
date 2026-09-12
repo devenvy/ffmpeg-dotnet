@@ -10,6 +10,17 @@ The sections below describe the approved design. Eight things changed while buil
 because something was measured or reviewed rather than assumed. Where a section further down
 contradicts this list, this list is current.
 
+0. **Final package shape (supersedes items 1, 2 and 8 below).** One package per
+   platform, `…{Variant}.Runtime.<rid>`, plus `…{Variant}.Runtime.All` which depends on
+   all twelve. No bare meta, no `runtime.json`. Consumers select with two conditions
+   that interpolate `$(RuntimeIdentifier)` into the package id — documented in the
+   README, and verified: `-r`/`-p:` builds resolve exactly one platform, a RID-less
+   build resolves `Runtime.All`, and a standalone `dotnet restore -r` silently
+   resolves `Runtime.All` (use `-p:RuntimeIdentifier=`). `runtime.json` was dropped
+   after testing showed it cannot serve both cases from one package: with no RID,
+   NuGet performs no RID resolution at all, so even an `any` catch-all never fires.
+   **53 packages: 4 × (12 platforms + 1 All) + the helper.**
+
 1. **Added a second meta per cell, `…{Cell}.Rid`, carrying `runtime.json`.** The original design
    trimmed only what reached `bin/`; the restore still pulled every platform. Measured against
    real assets that is **415 MB for one cell**. `runtime.json` is NuGet's RID-conditional

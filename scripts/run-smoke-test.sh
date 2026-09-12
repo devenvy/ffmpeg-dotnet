@@ -63,5 +63,5 @@ PKG_VERSION="${PKG_VERSION:-0.0.0-ci}"
 cd "${WORK}"
 exec dotnet run -c Release \
   -r "${RID}" --self-contained false \
-  -p:FFmpegPackage="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Rid" \
+  -p:FFmpegPackage="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Runtime.${RID}" \
   -p:FFmpegPackageVersion="${PKG_VERSION}"

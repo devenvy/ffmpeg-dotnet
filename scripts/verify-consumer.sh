@@ -5,14 +5,24 @@ set -euo pipefail
 # verify-consumer.sh <nupkg-dir> <version>
 #
 # Builds throwaway projects against the freshly packed feed and asserts what a
-# real consumer actually gets. Package contents alone do not prove this: NuGet
-# RID resolution, SDK asset selection and the trim targets all sit between the
+# real consumer gets. Package contents alone do not prove this: NuGet RID
+# resolution, SDK asset selection and the trim targets all sit between the
 # package and the consumer's bin/, and each has surprised us at least once.
+#
+# The pattern under test is the one the README documents:
+#
+#   <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+#     <PackageReference Include="...Runtime.All" />
+#   </ItemGroup>
+#   <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+#     <PackageReference Include="...Runtime.$(RuntimeIdentifier)" />
+#   </ItemGroup>
 # ==============================================================================
 
 FEED="$(cd "${1:?Usage: verify-consumer.sh <nupkg-dir> <version>}" && pwd)"
 VERSION="${2:?Usage: verify-consumer.sh <nupkg-dir> <version>}"
 CELL="${CELL:-LGPLv2}"
+RID_UNDER_TEST="${RID_UNDER_TEST:-linux-x64}"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -20,7 +30,7 @@ trap 'rm -rf "${WORK}"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 scaffold() {
-  local dir="$1" package="$2"
+  local dir="$1"
   rm -rf "${dir}"
   dotnet new console -o "${dir}" >/dev/null
   cat > "${dir}/nuget.config" <<EOF
@@ -38,47 +48,68 @@ scaffold() {
   </packageSourceMapping>
 </configuration>
 EOF
-  sed -i "s|</Project>|  <ItemGroup><PackageReference Include=\"${package}\" Version=\"${VERSION}\" /></ItemGroup>\n</Project>|" \
-    "${dir}"/*.csproj
+  # The documented two-branch pattern, verbatim.
+  python3 - "${dir}" "${CELL}" "${VERSION}" <<'PY'
+import sys, pathlib
+d, cell, ver = sys.argv[1], sys.argv[2], sys.argv[3]
+p = next(pathlib.Path(d).glob('*.csproj'))
+s = p.read_text(encoding='utf-8-sig')
+s = s.replace('</Project>', f'''  <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.{cell}.Runtime.All" Version="{ver}" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.{cell}.Runtime.$(RuntimeIdentifier)" Version="{ver}" />
+  </ItemGroup>
+</Project>''')
+p.write_text(s, encoding='utf-8')
+PY
 }
 
-restored_rids() {
-  grep -oE "\"DevEnvy\.FFmpeg\.Binaries\.${CELL}\.Runtime\.[a-z0-9-]+/" "$1/obj/project.assets.json" 2>/dev/null \
+restored_platforms() {
+  grep -oE "\"DevEnvy\.FFmpeg\.Binaries\.${CELL}\.Runtime\.[A-Za-z0-9-]+/" "$1/obj/project.assets.json" 2>/dev/null \
     | tr -d '"/' | sed "s/DevEnvy.FFmpeg.Binaries.${CELL}.Runtime.//" | sort -u | tr '\n' ' ' || true
 }
 
-echo "=== .Rid meta restores exactly one platform ==="
-scaffold "${WORK}/rid" "DevEnvy.FFmpeg.Binaries.${CELL}.Rid"
-dotnet build "${WORK}/rid" -c Release -r linux-x64 --self-contained false >/dev/null 2>&1 \
-  || fail "build with -r linux-x64 failed"
+echo "=== a RID-specific build restores exactly that platform ==="
+scaffold "${WORK}/rid"
+dotnet build "${WORK}/rid" -c Release -r "${RID_UNDER_TEST}" --self-contained false >/dev/null 2>&1 \
+  || fail "build with -r ${RID_UNDER_TEST} failed"
+got="$(restored_platforms "${WORK}/rid")"
+[[ "${got}" == "${RID_UNDER_TEST} " ]] \
+  || fail "expected only ${RID_UNDER_TEST}, restored '${got}'"
+find "${WORK}/rid/bin" -name 'libavcodec.so.*' -o -name 'avcodec-*.dll' | grep -q . \
+  || fail "no avcodec reached bin/ for ${RID_UNDER_TEST}"
+echo "  ${RID_UNDER_TEST} only, avcodec present"
 
-got="$(restored_rids "${WORK}/rid")"
-[[ "${got}" == "linux-x64 " ]] || fail ".Rid with -r linux-x64 restored '${got}', expected only linux-x64"
-find "${WORK}/rid/bin" -name 'libavcodec.so.*' | grep -q . \
-  || fail "libavcodec did not reach bin/ for linux-x64"
-echo "  linux-x64 only, libavcodec present"
+# Only meaningful when the whole platform set is in the feed, which is true on a
+# release run and not on a CI subset run.
+count=$(find "${FEED}" -name "*.${CELL}.Runtime.*.nupkg" | wc -l)
+if [[ "${count}" -ge 13 ]]; then
+  echo "=== a RID-less build falls back to Runtime.All and gets every platform ==="
+  scaffold "${WORK}/norid"
+  dotnet build "${WORK}/norid" -c Release >/dev/null 2>&1 || fail "RID-less build failed"
+  got="$(restored_platforms "${WORK}/norid")"
+  [[ "${got}" == *"All"* ]] || fail "RID-less build did not resolve Runtime.All, got '${got}'"
+  for want in win-x64 linux-x64 osx-arm64 ios; do
+    [[ "${got}" == *"${want}"* ]] || fail "Runtime.All did not bring ${want}"
+  done
+  echo "  Runtime.All resolved, pulling every platform"
 
-echo "=== .Rid meta warns instead of silently shipping nothing ==="
-scaffold "${WORK}/norid" "DevEnvy.FFmpeg.Binaries.${CELL}.Rid"
-dotnet build "${WORK}/norid" -c Release 2>&1 | grep -q DEVFFM001 \
-  || fail "a RID-less build of .Rid did not emit the DEVFFM001 warning"
-echo "  DEVFFM001 emitted"
-
-# Only meaningful when every runtime package for the cell is in the feed, which
-# is true on a release run and not on a CI subset run.
-_runtime_pkgs=("${FEED}"/*."${CELL}".Runtime.*.nupkg)
-if [[ -e "${_runtime_pkgs[0]}" && "${#_runtime_pkgs[@]}" -ge 11 ]]; then
-  echo "=== all-platform meta trims to FFmpegRuntimeIdentifiers ==="
-  scaffold "${WORK}/trim" "DevEnvy.FFmpeg.Binaries.${CELL}"
-  sed -i "s|<TargetFramework>|<FFmpegRuntimeIdentifiers>linux-x64</FFmpegRuntimeIdentifiers><TargetFramework>|" \
-    "${WORK}/trim"/*.csproj
+  echo "=== FFmpegRuntimeIdentifiers trims the RID-less output ==="
+  scaffold "${WORK}/trim"
+  python3 - "${WORK}/trim" <<'PY'
+import sys, pathlib
+p = next(pathlib.Path(sys.argv[1]).glob('*.csproj'))
+s = p.read_text(encoding='utf-8-sig').replace(
+    '<TargetFramework>', '<FFmpegRuntimeIdentifiers>linux-x64</FFmpegRuntimeIdentifiers><TargetFramework>')
+p.write_text(s, encoding='utf-8')
+PY
   dotnet publish "${WORK}/trim" -c Release >/dev/null 2>&1 || fail "trimmed publish failed"
-
-  kept="$(find "${WORK}/trim/bin" -path '*publish*' -name 'runtimes' -type d -exec ls {} \; | sort -u | tr '\n' ' ')"
+  kept="$(find "${WORK}/trim/bin" -path '*publish/runtimes/*' -maxdepth 4 -mindepth 2 -type d -exec basename {} \; | sort -u | tr '\n' ' ')"
   [[ "${kept}" == "linux-x64 " ]] || fail "trim kept '${kept}', expected only linux-x64"
   echo "  publish output trimmed to linux-x64"
 else
-  echo "=== all-platform meta trim: skipped (feed has a RID subset) ==="
+  echo "=== Runtime.All and trim checks: skipped (feed holds ${count} platform packages, need 13) ==="
 fi
 
 echo ""

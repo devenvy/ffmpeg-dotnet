@@ -17,6 +17,8 @@ from pathlib import Path
 # ---------------------------------------------------------------- Mach-O ----
 LC_ID_DYLIB, LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB = 0x0D, 0x0C, 0x18
 LC_REEXPORT_DYLIB, LC_RPATH, LC_CODE_SIGNATURE = 0x8000001F, 0x8000001C, 0x1D
+LC_BUILD_VERSION, LC_VERSION_MIN_MACOSX = 0x32, 0x24
+APPLE_PLATFORM = {1: 'macOS', 2: 'iOS', 3: 'tvOS', 6: 'macCatalyst', 7: 'iOS-simulator'}
 MACHO_MAGIC = (0xFEEDFACF, 0xCFFAEDFE, 0xFEEDFACE, 0xCEFAEDFE)
 FAT_MAGIC = (0xCAFEBABE, 0xBEBAFECA)
 
@@ -32,7 +34,7 @@ def macho(data):
     is64 = magic in (0xFEEDFACF, 0xCFFAEDFE)
     ncmds = struct.unpack_from('<I', data, 16)[0]
     off = 32 if is64 else 28
-    out = {'fat': False, 'id': None, 'load': [], 'rpath': [], 'signed': False}
+    out = {'fat': False, 'id': None, 'load': [], 'rpath': [], 'signed': False, 'minos': None}
     for _ in range(min(ncmds, 4096)):
         if off + 8 > len(data):
             break
@@ -50,6 +52,12 @@ def macho(data):
                 out['load'].append(s)
         elif cmd == LC_CODE_SIGNATURE:
             out['signed'] = True
+        elif cmd == LC_BUILD_VERSION:
+            plat, minos, _sdk = struct.unpack_from('<III', data, off + 8)
+            out['minos'] = f"{APPLE_PLATFORM.get(plat, plat)} {minos >> 16}.{(minos >> 8) & 0xFF}"
+        elif cmd == LC_VERSION_MIN_MACOSX:
+            v = struct.unpack_from('<I', data, off + 8)[0]
+            out['minos'] = f"macOS {v >> 16}.{(v >> 8) & 0xFF}"
         off += size
     return out
 
@@ -94,7 +102,19 @@ def elf(data):
                     soname = s
                 else:
                     runpath = s
-        return {'needed': needed, 'runpath': runpath, 'soname': soname}
+        glibc = None
+        vers = re.findall(rb'GLIBC_(\d+)\.(\d+)', data)
+        if vers:
+            glibc = max((int(a), int(b)) for a, b in vers)
+        align = set()
+        phoff = struct.unpack_from('<Q' if is64 else '<I', data, 0x20 if is64 else 0x1C)[0]
+        phent, phnum = struct.unpack_from('<HH', data, 0x36 if is64 else 0x2A)
+        for i in range(phnum):
+            o = phoff + i * phent
+            if struct.unpack_from('<I', data, o)[0] == 1:   # PT_LOAD
+                align.add(struct.unpack_from('<Q' if is64 else '<I', data, o + (48 if is64 else 28))[0])
+        return {'needed': needed, 'runpath': runpath, 'soname': soname,
+                'glibc': glibc, 'align': sorted(align)}
     except Exception:
         return None
 
@@ -157,7 +177,9 @@ def pe(data):
 
 
 # ----------------------------------------------------------------- audit ----
-DATA_PATH = re.compile(rb'/(?:Users|home)/runner/[^\x00"\s]{4,120}')
+# Matches any build-tree path regardless of CI root (/Users, /home/runner,
+# /work, /__w). Non-greedy before .build/ so the marker is not swallowed.
+DATA_PATH = re.compile(rb'/[A-Za-z0-9_./+-]{0,60}?[.]build/[A-Za-z0-9_./+-]{0,110}')
 PKG_PREFIX = re.compile(rb'(?:/usr/local/opt|/opt/homebrew|/usr/local/Cellar|/home/linuxbrew)[^\x00"\s]{0,80}')
 FFMPEG_LIBS = ('libav', 'libsw', 'libpostproc', 'avcodec', 'avdevice', 'avfilter',
                'avformat', 'avutil', 'swresample', 'swscale', 'postproc')
@@ -228,6 +250,14 @@ def audit(root: Path, name: str):
             if not m['signed'] and 'arm64' in name:
                 add('macho-unsigned-arm64', 'unsigned; Apple Silicon refuses to run this', rel)
 
+        # A .tar.gz records Unix modes, so a non-executable ffmpeg is upstream's,
+        # not an artefact of repackaging.
+        if p.name in ('ffmpeg', 'ffprobe') and not (p.stat().st_mode & 0o111):
+            add('not-executable', f"mode {oct(p.stat().st_mode & 0o777)} in the tarball", rel)
+
+        if m and not m['fat'] and m['minos']:
+            f.setdefault('minos', {})[rel] = m['minos']
+
         e = elf(data)
         if e is not None:
             ext = [n for n in e['needed']
@@ -238,6 +268,12 @@ def audit(root: Path, name: str):
                 add('elf-no-runpath', 'executable cannot find sibling libraries', rel)
             if p.name.startswith('lib') and not e['soname'] and '.so' in p.name:
                 add('elf-no-soname', 'library has no SONAME', rel)
+            if e.get('glibc'):
+                f.setdefault('glibc', {})[rel] = '%d.%d' % e['glibc']
+            # Android 15+ and Play require 16 KiB-aligned LOAD segments.
+            if 'android' in name and e.get('align') and 0x4000 not in e['align']:
+                add('android-page-align',
+                    f"LOAD align {[hex(a) for a in e['align']]}, needs 0x4000", rel)
 
         w = pe(data)
         if w:

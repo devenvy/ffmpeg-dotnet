@@ -6,9 +6,9 @@ release assets, verifies them against the release's `SHA256SUMS`, and packs them
 
 ## Which package
 
-Pick a license cell, then pick how much you want restored.
+Pick a license variant, then reference the platform you build for.
 
-| License cell | FFmpeg build |
+| License variant | FFmpeg build |
 |---|---|
 | `LGPLv2` | LGPL-2.1 — App-Store safe, no Vulkan |
 | `LGPLv3` | LGPL-3.0 |
@@ -16,36 +16,73 @@ Pick a license cell, then pick how much you want restored.
 | `GPLv3`  | GPL-3.0 |
 
 ```
-DevEnvy.FFmpeg.Binaries.<cell>           every platform, works without a RID
-DevEnvy.FFmpeg.Binaries.<cell>.Rid       only the platform you build for
-DevEnvy.FFmpeg.Binaries.<cell>.Runtime.<rid>   one platform, referenced directly
-DevEnvy.FFmpeg.Binaries.<cell>.Apple     iOS xcframeworks
-DevEnvy.FFmpeg.Binaries                  path helper, no binaries
+DevEnvy.FFmpeg.Binaries                        path helper, no binaries
+DevEnvy.FFmpeg.Binaries.<variant>.Runtime.<rid>  one platform's binaries
+DevEnvy.FFmpeg.Binaries.<variant>.Runtime.All    every platform
 ```
 
-### `.Rid` — recommended when you build for a known platform
+### The recommended pattern
+
+Put this in your csproj and it works whether or not the build names a platform:
 
 ```xml
-<PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Rid" Version="9.0.1.500" />
+<ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.All" Version="9.0.1.500" />
+</ItemGroup>
+<ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(RuntimeIdentifier)" Version="9.0.1.500" />
+</ItemGroup>
 ```
 
-Resolves native binaries **per RuntimeIdentifier**, so `dotnet publish -r linux-x64` downloads
-one platform (~32 MB) instead of twelve (~415 MB). It works with a single `RuntimeIdentifier`
-and with a project-declared `RuntimeIdentifiers` list, which is the shape .NET Android uses for
-multi-ABI builds, so MAUI heads are served without extra configuration.
+`$(RuntimeIdentifier)` is interpolated straight into the package id, so one pair of
+conditions covers every platform — there is no per-RID block to maintain.
 
-A build that sets **neither** resolves no binaries at all and warns `DEVFFM001`. That is the
-tradeoff for the precise restore — use the plain package instead if you need a RID-less build.
+| What you run | What restores |
+|---|---|
+| `dotnet publish -r linux-x64` | `Runtime.linux-x64` only, ~32 MB |
+| `dotnet build -r win-x64` | `Runtime.win-x64` only |
+| `dotnet build` (no RID) | `Runtime.All`, ~415 MB, every platform |
 
-### The plain package — when you need a portable build
+If you only ever ship one platform, skip the conditions and reference
+`...Runtime.linux-x64` directly.
+
+### Two things that will bite
+
+**Use `-p:RuntimeIdentifier=` for a standalone `restore`.** A bare `-r` on
+`dotnet restore` populates NuGet's RID graph but leaves `$(RuntimeIdentifier)` empty
+while the project is evaluated, so the first condition wins and you silently restore
+every platform:
+
+```bash
+dotnet restore -r osx-arm64                     # wrong: resolves Runtime.All
+dotnet restore -p:RuntimeIdentifier=osx-arm64   # correct
+```
+
+`dotnet build -r` and `dotnet publish -r` are fine — they set the property.
+
+**An unsupported RID fails on a package name you never typed**, because the id is
+built from `$(RuntimeIdentifier)`:
+
+```
+NU1101: Unable to find package DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.linux-musl-arm
+```
+
+To get a clearer error, validate first:
 
 ```xml
-<PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2" Version="9.0.1.500" />
+<PropertyGroup>
+  <FFmpegSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;android-arm64;android-x64;ios</FFmpegSupportedRids>
+</PropertyGroup>
+<Target Name="ValidateFFmpegRid" BeforeTargets="CollectPackageReferences"
+        Condition="'$(RuntimeIdentifier)' != '' AND !$([System.String]::Copy(';$(FFmpegSupportedRids);').Contains(';$(RuntimeIdentifier);'))">
+  <Error Text="FFmpeg binaries are not published for '$(RuntimeIdentifier)'. Supported: $(FFmpegSupportedRids)." />
+</Target>
 ```
 
-Carries every platform, so `dotnet build` with no RID works and an app really can run anywhere.
-That costs ~415 MB restored and every platform copied into `bin/`. To narrow the copy without
-giving up the RID-less build:
+### Trimming a RID-less build
+
+`Runtime.All` copies every platform into `bin/`. To narrow the copy without giving up
+the RID-less build:
 
 ```xml
 <PropertyGroup>
@@ -53,11 +90,8 @@ giving up the RID-less build:
 </PropertyGroup>
 ```
 
-This trims build **and** publish output. It does not trim the restore — the packages are still
-downloaded. Only `.Rid` or a direct `Runtime.<rid>` reference avoids the download.
-
-iOS is deliberately not a dependency of the plain package: an iOS head always builds with a
-RID, so it is served by `.Rid`, and this keeps 36 MB of xcframeworks out of every server app.
+This trims build **and** publish output. It does not trim the restore — the packages
+are still downloaded. Only naming a platform avoids the download.
 
 ## Using it
 
@@ -90,7 +124,7 @@ upstream builds those platforms to be linked into an app, not shelled out to.
 | `linux-musl-x64`, `linux-musl-arm64` | Alpine |
 | `osx-x64`, `osx-arm64` | |
 | `android-arm64`, `android-x64` | libraries only; `x64` is the emulator |
-| `ios-arm64`, `iossimulator-arm64` | via the `.Apple` package |
+| `ios-arm64`, `iossimulator-arm64` | via `Runtime.ios` |
 
 Not supported, because upstream does not build them: `maccatalyst-*`, 32-bit `android-arm`,
 `browser-wasm`, `tvos-*`, and the x86_64 iOS simulator. Mac Catalyst is a separate RID family
@@ -115,11 +149,13 @@ Several FFmpeg series are tracked at once from `versions.json`; each releases in
 ## Migrating from `DevEnvy.FFmpeg.Binaries.LGPL`
 
 That package is unlisted. Its successor is `DevEnvy.FFmpeg.Binaries.LGPLv2` (upstream's `lgplv2`
-cell is the same LGPL-2.1 build it always shipped). Two changes to expect:
+variant is the same LGPL-2.1 build it always shipped). Two changes to expect:
 
 - Binaries moved from `ffmpeg/{rid}/` to NuGet's standard `runtimes/{rid}/native/`. Code calling
   `FFmpegBinaries.GetLibraryPath()` is unaffected; code hard-coding the old path is not.
-- `FFmpegBinaries` now lives in `DevEnvy.FFmpeg.Binaries`, which the cell packages depend on.
+- One package per platform instead of one fat package, so a reference now names a platform
+  (or `Runtime.All`). See the pattern above.
+- `FFmpegBinaries` now lives in `DevEnvy.FFmpeg.Binaries`, which the platform packages depend on.
 
 ## Building locally
 

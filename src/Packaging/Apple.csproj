@@ -9,15 +9,14 @@
     strips the unused one from the app.
   -->
   <PropertyGroup>
-    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Apple</PackageId>
-    <Description>FFmpeg $(FFmpegVersion) $(Cell) xcframeworks for iOS (device and simulator). Reference DevEnvy.FFmpeg.Binaries.$(Cell).Rid instead of this package directly.</Description>
+    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.ios</PackageId>
+    <Description>FFmpeg $(FFmpegVersion) $(Cell) xcframeworks for iOS (device and simulator). Referenced by DevEnvy.FFmpeg.Binaries.$(Cell).</Description>
     <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>
     <IsPackable>true</IsPackable>
-    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <NoWarn>NU5128;NU5100</NoWarn>
 

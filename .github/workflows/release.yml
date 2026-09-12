@@ -106,7 +106,7 @@ jobs:
         run: |
           for f in nupkgs/*.nupkg; do
             case "$(basename "$f")" in
-              *.LGPLv2.[0-9]*|*.LGPLv3.[0-9]*|*.GPLv2.[0-9]*|*.GPLv3.[0-9]*|*.Rid.[0-9]*) continue ;;
+              *.Runtime.All.[0-9]*) continue ;;   # metas go in the second pass
             esac
             dotnet nuget push "$f" --api-key "$NUGET_KEY" \
               --source https://api.nuget.org/v3/index.json --skip-duplicate
@@ -118,9 +118,7 @@ jobs:
         env:
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          for f in nupkgs/*.LGPLv2.[0-9]*.nupkg nupkgs/*.LGPLv3.[0-9]*.nupkg \
-                   nupkgs/*.GPLv2.[0-9]*.nupkg nupkgs/*.GPLv3.[0-9]*.nupkg \
-                   nupkgs/*.Rid.[0-9]*.nupkg; do
+          for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
             [[ -e "$f" ]] || continue
             dotnet nuget push "$f" --api-key "$NUGET_KEY" \
               --source https://api.nuget.org/v3/index.json --skip-duplicate

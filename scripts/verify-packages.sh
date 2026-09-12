@@ -42,14 +42,14 @@ for pkg in packages:
     # RID-native packages only. An xcframework carries its headers identically in
     # the device and simulator slices, so duplicates there are structural to
     # Apple's format rather than a normalization regression.
-    if ".Runtime." in pkg_id:
+    if payload and not pkg_id.endswith(".Runtime.ios"):
         crcs = collections.Counter(z.getinfo(n).CRC for n in payload if z.getinfo(n).file_size > 4096)
         dupes = sum(c - 1 for c in crcs.values() if c > 1)
         check(dupes == 0, f"{name}: {dupes} byte-identical duplicate payload file(s) — symlink normalization regressed")
 
     # Apple instead gets a build-residue check: debug symbols and bitcode maps
     # are link-time artifacts that would be dead weight in a shipped app.
-    if pkg_id.endswith(".Apple"):
+    if pkg_id.endswith(".Runtime.ios"):
         residue = [n for n in names if ".dSYM/" in n or n.endswith(".bcsymbolmap")]
         check(not residue, f"{name}: ships build residue: {residue[:3]}")
         slices = {n.split("/")[2] for n in names if n.startswith("frameworks/") and n.count("/") > 2}
@@ -77,25 +77,27 @@ for pkg in packages:
           f"{name}: legal/ is nested under native/ and would be copied into consumer output")
 
     # These are file containers. A stray compiled assembly means IncludeBuildOutput leaked.
-    if ".Runtime." in pkg_id or pkg_id.endswith(".Apple"):
+    if payload:
         check(not any(n.startswith("lib/") and n.endswith(".dll") for n in names),
               f"{name}: contains a lib/*.dll — IncludeBuildOutput leaked into a native package")
         check(any(n.startswith("legal/") for n in names), f"{name}: ships no legal/ notices")
         check(bool(payload), f"{name}: has no native payload at all")
 
-    if ".Runtime." in pkg_id:
-        rid = pkg_id.split(".Runtime.")[1]
+    if payload and not pkg_id.endswith(".Runtime.ios"):
+        rid = pkg_id.rsplit(".", 1)[1]
         stray = [n for n in payload if not n.startswith(f"runtimes/{rid}/native/")]
         check(not stray, f"{name}: payload outside runtimes/{rid}/native/: {stray[:3]}")
 
-    # The whole point of the .Rid meta: RID-conditional dependencies.
-    if pkg_id.endswith(".Rid"):
-        check("runtime.json" in names, f"{name}: .Rid meta without a runtime.json")
-        if "runtime.json" in names:
-            rj = json.loads(z.read("runtime.json"))
-            rids = rj.get("runtimes", {})
-            check(len(rids) >= 13, f"{name}: runtime.json covers only {len(rids)} RIDs, expected 13")
-            check("ios-arm64" in rids, f"{name}: runtime.json does not map ios-arm64")
+    # The .All meta must reach every platform, or a RID-less consumer silently
+    # loses one.
+    if pkg_id.endswith(".Runtime.All"):
+        nuspec_xml = z.read(nuspec).decode("utf-8-sig")
+        deps = re.findall(r'<dependency id="([^"]+)"', nuspec_xml)
+        platforms = [d for d in deps if not d.endswith("DevEnvy.FFmpeg.Binaries")]
+        check(len(platforms) == 12,
+              f"{name}: .All depends on {len(platforms)} platforms, expected 12")
+        check(any(d.endswith(".Runtime.ios") for d in platforms), f"{name}: .All omits the iOS package")
+        check(not payload, f"{name}: .All should carry no binaries of its own")
 
     size = pkg.stat().st_size / 1048576
     print(f"  {name}  ({size:.1f} MB, {len(payload)} payload file(s))")
