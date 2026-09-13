@@ -115,7 +115,10 @@ s = p.read_text(encoding='utf-8-sig').replace(
 p.write_text(s, encoding='utf-8')
 PY
   dotnet publish "${WORK}/trim" -c Release >/dev/null 2>&1 || fail "trimmed publish failed"
-  kept="$(find "${WORK}/trim/bin" -path '*publish/runtimes/*' -maxdepth 4 -mindepth 2 -type d -exec basename {} \; | sort -u | tr '\n' ' ')"
+  # publish/runtimes/<rid> sits six levels below bin, so a shallow -maxdepth
+  # matches nothing and the assertion passes vacuously against an empty result.
+  kept="$(find "${WORK}/trim/bin" -path '*/publish/runtimes/*' -maxdepth 6 -type d \
+    | sed 's|.*/publish/runtimes/||' | cut -d/ -f1 | sort -u | tr '\n' ' ')"
   [[ "${kept}" == "linux-x64 " ]] || fail "trim kept '${kept}', expected only linux-x64"
   echo "  publish output trimmed to linux-x64"
 else
