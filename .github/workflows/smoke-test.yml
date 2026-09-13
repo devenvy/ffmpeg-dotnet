@@ -155,29 +155,39 @@ jobs:
     needs: [pack, pack-meta]
     name: linux-arm (qemu)
     runs-on: ubuntu-24.04-arm
-    # linux-arm is the one RID with no native runner. A full dotnet SDK under
-    # QEMU is slow enough that the default 6h timeout reads as "hung" rather
-    # than "slow", so cap it and let the job fail fast if emulation stalls.
-    timeout-minutes: 45
+    # linux-arm is the only RID with no native runner, and GitHub's arm64 hosts
+    # have no 32-bit EL0, so armv7 always runs under emulation here.
+    #
+    # An emulated *SDK build* took six hours. So the SDK work happens natively
+    # and only the finished app is emulated: publish self-contained for
+    # linux-arm on the arm64 host, then execute it in a runtime-deps container,
+    # which needs no SDK. That turns hours of emulated compilation into about a
+    # second of emulated execution.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-linux-armhf
+          name: pkg-linux-arm
           path: feed
       - uses: actions/download-artifact@v4
         with:
           name: pkg-meta
           path: feed
+
+      - name: Publish the smoke test for linux-arm (native, not emulated)
+        run: bash scripts/publish-smoke-test.sh linux-arm ./feed ./armhf-app
+
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm
-      - name: Smoke test under linux/arm/v7
+
+      - name: Run it under linux/arm/v7
         run: |
-          docker run --rm --platform linux/arm/v7 \
-            -v "$PWD:/w" -w /w \
-            mcr.microsoft.com/dotnet/sdk:10.0 \
-            sh scripts/run-smoke-test.sh linux-arm ./feed
+          docker run --rm --platform linux/arm/v7             -v "$PWD/armhf-app:/app" -w /app             mcr.microsoft.com/dotnet/runtime-deps:10.0             ./SmokeTest
 
   # Android and iOS cannot run the console smoke test, so these assert the thing
   # that is actually unproven: that the platform SDK picks the payload up and

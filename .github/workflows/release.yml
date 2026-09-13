@@ -16,6 +16,11 @@ on:
         description: "Series to release (e.g. 9.0). Empty releases every series whose version is not yet tagged."
         required: false
         type: string
+      force_rebuild:
+        description: "Re-release an upstream build that has already shipped, as a packaging-only rebuild (our_build + 1)."
+        required: false
+        default: false
+        type: boolean
       dry_run:
         description: "Pack and verify everything, then report what WOULD be pushed and tagged. Publishes nothing."
         required: false
@@ -45,6 +50,8 @@ jobs:
       # no v* tag yet. Re-running after a partial failure resumes rather than
       # duplicating, and a no-op merge releases nothing.
       - id: plan
+        env:
+          FORCE: ${{ inputs.force_rebuild && '1' || '' }}
         run: |
           set -euo pipefail
           entries=()
@@ -53,12 +60,17 @@ jobs:
               continue
             fi
             tag=$(jq -r --arg s "$series" '.series[$s]' versions.json)
-            version=$(bash scripts/compute-version.sh "$tag")
-            if git rev-parse "v${version}" >/dev/null 2>&1; then
-              echo "${series}: v${version} already tagged, skipping"
+
+            # compute-version.sh exits 3 when this upstream build has already
+            # shipped. That is the real idempotency check: it cannot be done by
+            # asking whether the computed version is tagged, because the script
+            # always returns an untagged version by construction.
+            if version=$(bash scripts/compute-version.sh "$tag" ${FORCE:+--force-rebuild} 2>/dev/null); then
+              echo "${series}: will release ${version} from upstream ${tag}"
+            else
+              echo "${series}: upstream ${tag} already released, skipping"
               continue
             fi
-            echo "${series}: will release ${version} from upstream ${tag}"
             entries+=("{\"series\":\"${series}\",\"upstream\":\"${tag}\",\"version\":\"${version}\"}")
           done
           if [[ ${#entries[@]} -eq 0 ]]; then

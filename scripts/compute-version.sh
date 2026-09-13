@@ -18,7 +18,8 @@ set -euo pipefail
 # the v* tags already pushed.
 # ==============================================================================
 
-UPSTREAM_TAG="${1:?Usage: compute-version.sh <upstream-tag>}"
+UPSTREAM_TAG="${1:?Usage: compute-version.sh <upstream-tag> [--force-rebuild]}"
+FORCE_REBUILD="${2:-}"
 
 if ! [[ "${UPSTREAM_TAG}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
   echo "ERROR: '${UPSTREAM_TAG}' is not a 4-part upstream tag (e.g. 9.0.1.5)" >&2
@@ -37,6 +38,19 @@ while read -r tag; do
   (( z / 100 == UPSTREAM_Z )) || continue
   (( z % 100 > HIGHEST )) && HIGHEST=$(( z % 100 ))
 done < <(git tag --list "v${FFMPEG}.*" | sed 's/^v//')
+
+# Releasing is not the same as computing the next version. Without this, a
+# caller asking "is a release warranted?" always got a fresh, untagged version
+# back and concluded yes - so any commit touching the packaging published all
+# 53 packages again and burned a version number.
+#
+# A new upstream build is always worth releasing. Re-releasing the same upstream
+# build is a deliberate act and has to be asked for.
+if [[ "${HIGHEST}" -ge 0 && "${FORCE_REBUILD}" != "--force-rebuild" ]]; then
+  echo "ERROR: upstream ${UPSTREAM_TAG} is already released as v${FFMPEG}.$(( BASE + HIGHEST ))." >&2
+  echo "       Pass --force-rebuild to publish another packaging-only build." >&2
+  exit 3
+fi
 
 OUR_BUILD=$(( HIGHEST + 1 ))
 
