@@ -90,6 +90,7 @@ jobs:
   # libc it was built for.
   native:
     needs: [pack, pack-meta]
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -123,6 +124,7 @@ jobs:
   # architecture runs natively - this is containerization, not emulation.
   musl:
     needs: [pack, pack-meta]
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -153,6 +155,10 @@ jobs:
     needs: [pack, pack-meta]
     name: linux-arm (qemu)
     runs-on: ubuntu-24.04-arm
+    # linux-arm is the one RID with no native runner. A full dotnet SDK under
+    # QEMU is slow enough that the default 6h timeout reads as "hung" rather
+    # than "slow", so cap it and let the job fail fast if emulation stalls.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -180,6 +186,7 @@ jobs:
   # dynamic loader will find.
   android:
     needs: [pack, pack-meta]
+    timeout-minutes: 30
     name: android-${{ matrix.abi }}
     runs-on: ubuntu-latest
     strategy:
@@ -224,6 +231,7 @@ jobs:
 
   ios:
     needs: [pack, pack-meta]
+    timeout-minutes: 30
     name: ios
     runs-on: macos-latest
     steps:

@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # kind:
 #   runtime  emit the .targets for one platform payload package
-#   ios      emit the .targets for the iOS payload package
+#   ios      emit the .targets for one Apple RID payload package
 #   all      emit the .nuspec for DevEnvy.FFmpeg.Binaries.<Cell>.All
 #
 # Payload packages are packed from csprojs (src/Packaging/{Runtime,Apple}.csproj)
@@ -35,7 +35,8 @@ declare -A SPDX=(
 # xcframeworks rather than runtimes/{rid}/native, but to a consumer it is simply
 # the iOS payload, so it is named like its siblings.
 ALL_RIDS=(win-x64 win-arm64 linux-x64 linux-arm64 linux-arm linux-musl-x64
-          linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64 ios)
+          linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64
+          ios-arm64 iossimulator-arm64)
 
 case "${KIND}" in
 
@@ -64,16 +65,21 @@ TARGETSEOF
     ;;
 
   ios)
-    ID="DevEnvy.FFmpeg.Binaries.${CELL}.Runtime.ios"
-    STAGING="${REPO_ROOT}/staging/${CELL}/ios"
-    # RID-native probing does not apply on iOS: .NET for iOS consumes native code
-    # through @(NativeReference), and Xcode selects the device or simulator slice
-    # from the xcframework and strips the other from the shipped app.
+    ID="DevEnvy.FFmpeg.Binaries.${CELL}.Runtime.${RID}"
+    STAGING="${REPO_ROOT}/staging/${CELL}/${RID}/frameworks"
+    # RID-native probing does not apply on Apple platforms: .NET consumes native
+    # code through @(NativeReference). Each package carries only its own slice,
+    # so the reference is a plain .framework rather than a fat .xcframework.
+    case "${RID}" in
+      ios*|maccatalyst*) PLATFORM="${RID%%-*}" ;;
+      *) echo "Unexpected Apple RID: ${RID}" >&2; exit 1 ;;
+    esac
+    [[ "${PLATFORM}" == "iossimulator" ]] && PLATFORM="ios"
     {
       echo '<?xml version="1.0" encoding="utf-8"?>'
       echo '<Project>'
-      echo "  <ItemGroup Condition=\"'\$(TargetPlatformIdentifier)' == 'ios'\">"
-      for fw in "${STAGING}"/*.xcframework; do
+      echo "  <ItemGroup Condition=\"'\$(TargetPlatformIdentifier)' == '${PLATFORM}'\">"
+      for fw in "${STAGING}"/*.framework; do
         [[ -d "${fw}" ]] || continue
         echo "    <NativeReference Include=\"\$(MSBuildThisFileDirectory)../frameworks/$(basename "${fw}")\" Kind=\"Framework\" />"
       done

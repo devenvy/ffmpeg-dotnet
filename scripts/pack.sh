@@ -276,14 +276,53 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     done
   done
 
+  ###############################################################################
+  # Apple: split each .xcframework back into per-RID .framework bundles.
+  #
+  # Upstream builds ios-arm64 and ios-sim-arm64 separately and merges them with
+  # xcodebuild -create-xcframework, publishing only the merged bundle - which is
+  # right for Apple consumers and wrong for us, because a .NET build sets a
+  # single RID and NuGet resolves a single package. An .xcframework is a
+  # directory of self-contained .framework bundles plus an Info.plist index, so
+  # splitting is a copy: no xcodebuild, no plist rewriting, runs on Linux.
+  #
+  # NativeReference Kind="Framework" takes a plain .framework, so each package
+  # ships only the slice its RID needs.
+  ###############################################################################
   if [[ "${PACK_IOS}" == "1" ]]; then
+    declare -A APPLE_SLICE=(
+      [ios-arm64]=ios-arm64
+      [iossimulator-arm64]=ios-arm64-simulator
+    )
     for cell in "${CELL_LIST[@]}"; do
       tarball="ffmpeg-${FFMPEG_VERSION}-ios-${cell}.tar.gz"
       download_and_verify "${tarball}"
-      stage="${STAGING_DIR}/${PACKAGE_CELL[${cell}]}/ios"
-      mkdir -p "${stage}"
-      tar -xzf "${DOWNLOAD_DIR}/${tarball}" -C "${stage}"
-      echo "  staged ${PACKAGE_CELL[${cell}]}/ios (xcframeworks, no normalization)"
+
+      unpacked="${STAGING_DIR}/.apple-${PACKAGE_CELL[${cell}]}"
+      rm -rf "${unpacked}"; mkdir -p "${unpacked}"
+      tar -xzf "${DOWNLOAD_DIR}/${tarball}" -C "${unpacked}"
+
+      for rid in "${!APPLE_SLICE[@]}"; do
+        slice="${APPLE_SLICE[${rid}]}"
+        stage="${STAGING_DIR}/${PACKAGE_CELL[${cell}]}/${rid}"
+        mkdir -p "${stage}/frameworks"
+
+        found=0
+        for xc in "${unpacked}"/*.xcframework; do
+          [[ -d "${xc}/${slice}" ]] || continue
+          cp -R "${xc}/${slice}"/*.framework "${stage}/frameworks/"
+          found=$(( found + 1 ))
+        done
+
+        if [[ "${found}" -eq 0 ]]; then
+          echo "ERROR: no '${slice}' slice in ${tarball} for ${rid}" >&2
+          exit 1
+        fi
+
+        [[ -d "${unpacked}/legal" ]] && cp -R "${unpacked}/legal" "${stage}/"
+        echo "  staged ${PACKAGE_CELL[${cell}]}/${rid} (${found} frameworks from the ${slice} slice)"
+      done
+      rm -rf "${unpacked}"
     done
   fi
 
@@ -313,15 +352,17 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     echo "==> Packing iOS packages"
     for cell in "${CELL_LIST[@]}"; do
       pc="${PACKAGE_CELL[${cell}]}"
-      bash "${REPO_ROOT}/scripts/gen-nuspec.sh" ios "${pc}" "" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
-      dotnet pack "${REPO_ROOT}/src/Packaging/Apple.csproj" \
-        -p:Cell="${pc}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \
-        -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/ios")/" \
-        -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios.targets")" \
-        -p:FFmpegVersion="${FFMPEG_VERSION}" -p:Version="${NUGET_VERSION}" \
-        -p:RestoreAdditionalProjectSources="$(to_native_path "${OUTPUT_DIR}")" \
-        -o "${OUTPUT_DIR}" --nologo -v quiet
-      echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios"
+      for rid in ios-arm64 iossimulator-arm64; do
+        bash "${REPO_ROOT}/scripts/gen-nuspec.sh" ios "${pc}" "${rid}" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
+        dotnet pack "${REPO_ROOT}/src/Packaging/Apple.csproj" \
+          -p:Cell="${pc}" -p:Rid="${rid}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \
+          -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/${rid}")/" \
+          -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.${rid}.targets")" \
+          -p:FFmpegVersion="${FFMPEG_VERSION}" -p:Version="${NUGET_VERSION}" \
+          -p:RestoreAdditionalProjectSources="$(to_native_path "${OUTPUT_DIR}")" \
+          -o "${OUTPUT_DIR}" --nologo -v quiet
+        echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.${rid}"
+      done
     done
   fi
 fi

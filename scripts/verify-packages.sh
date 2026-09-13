@@ -42,19 +42,27 @@ for pkg in packages:
     # RID-native packages only. An xcframework carries its headers identically in
     # the device and simulator slices, so duplicates there are structural to
     # Apple's format rather than a normalization regression.
-    if payload and not pkg_id.endswith(".Runtime.ios"):
+    if payload and "frameworks/" not in "".join(payload):
         crcs = collections.Counter(z.getinfo(n).CRC for n in payload if z.getinfo(n).file_size > 4096)
         dupes = sum(c - 1 for c in crcs.values() if c > 1)
         check(dupes == 0, f"{name}: {dupes} byte-identical duplicate payload file(s) — symlink normalization regressed")
 
     # Apple instead gets a build-residue check: debug symbols and bitcode maps
     # are link-time artifacts that would be dead weight in a shipped app.
-    if pkg_id.endswith(".Runtime.ios"):
+    # Apple packages ship one slice as plain .framework bundles, split out of
+    # upstream's merged .xcframework so each RID downloads only what it can use.
+    if any(n.startswith("frameworks/") for n in names):
+        rid = pkg_id.rsplit(".", 1)[1]
         residue = [n for n in names if ".dSYM/" in n or n.endswith(".bcsymbolmap")]
         check(not residue, f"{name}: ships build residue: {residue[:3]}")
-        slices = {n.split("/")[2] for n in names if n.startswith("frameworks/") and n.count("/") > 2}
-        check("ios-arm64" in slices, f"{name}: no ios-arm64 device slice (found {sorted(slices)})")
-        check(any("simulator" in s for s in slices), f"{name}: no simulator slice (found {sorted(slices)})")
+        check(not any(".xcframework" in n for n in names),
+              f"{name}: still ships a merged .xcframework rather than one slice")
+        wrong = "simulator" if rid == "ios-arm64" else None
+        if wrong:
+            check(not any(wrong in n.lower() for n in names),
+                  f"{name}: leaked the {wrong} slice into the device package")
+        fw = {n.split("/")[1] for n in names if n.startswith("frameworks/") and n.count("/") > 1}
+        check(len(fw) >= 6, f"{name}: only {len(fw)} frameworks, expected at least 6")
 
     # A RID-specific publish flattens everything under native/ into the publish
     # root, so per-library version.h files collide and the build fails NETSDK1152.
@@ -83,7 +91,7 @@ for pkg in packages:
         check(any(n.startswith("legal/") for n in names), f"{name}: ships no legal/ notices")
         check(bool(payload), f"{name}: has no native payload at all")
 
-    if payload and not pkg_id.endswith(".Runtime.ios"):
+    if payload and "frameworks/" not in "".join(payload):
         rid = pkg_id.rsplit(".", 1)[1]
         stray = [n for n in payload if not n.startswith(f"runtimes/{rid}/native/")]
         check(not stray, f"{name}: payload outside runtimes/{rid}/native/: {stray[:3]}")
@@ -94,9 +102,9 @@ for pkg in packages:
         nuspec_xml = z.read(nuspec).decode("utf-8-sig")
         deps = re.findall(r'<dependency id="([^"]+)"', nuspec_xml)
         platforms = [d for d in deps if not d.endswith("DevEnvy.FFmpeg.Binaries")]
-        check(len(platforms) == 12,
-              f"{name}: .All depends on {len(platforms)} platforms, expected 12")
-        check(any(d.endswith(".Runtime.ios") for d in platforms), f"{name}: .All omits the iOS package")
+        check(len(platforms) == 13,
+              f"{name}: .All depends on {len(platforms)} platforms, expected 13")
+        check(any(d.endswith(".Runtime.ios-arm64") for d in platforms), f"{name}: .All omits the iOS device package")
         check(not payload, f"{name}: .All should carry no binaries of its own")
 
     size = pkg.stat().st_size / 1048576

@@ -71,7 +71,7 @@ To get a clearer error, validate first:
 
 ```xml
 <PropertyGroup>
-  <FFmpegSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;android-arm64;android-x64;ios</FFmpegSupportedRids>
+  <FFmpegSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;android-arm64;android-x64;ios-arm64;iossimulator-arm64</FFmpegSupportedRids>
 </PropertyGroup>
 <Target Name="ValidateFFmpegRid" BeforeTargets="CollectPackageReferences"
         Condition="'$(RuntimeIdentifier)' != '' AND !$([System.String]::Copy(';$(FFmpegSupportedRids);').Contains(';$(RuntimeIdentifier);'))">
@@ -124,7 +124,12 @@ upstream builds those platforms to be linked into an app, not shelled out to.
 | `linux-musl-x64`, `linux-musl-arm64` | Alpine |
 | `osx-x64`, `osx-arm64` | |
 | `android-arm64`, `android-x64` | libraries only; `x64` is the emulator |
-| `ios-arm64`, `iossimulator-arm64` | via `Runtime.ios` |
+| `ios-arm64`, `iossimulator-arm64` | one slice each, split from upstream's xcframework |
+
+Apple platforms consume native code through `@(NativeReference)` rather than
+`runtimes/{rid}/native`, so those packages ship `.framework` bundles. Upstream publishes one
+`.xcframework` holding every slice — right for Xcode, where one bundle serves every
+destination — and this repo splits it so each RID's package carries only its own slice.
 
 Not supported, because upstream does not build them: `maccatalyst-*`, 32-bit `android-arm`,
 `browser-wasm`, `tvos-*`, and the x86_64 iOS simulator. Mac Catalyst is a separate RID family

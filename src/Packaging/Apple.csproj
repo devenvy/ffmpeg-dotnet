@@ -9,8 +9,8 @@
     strips the unused one from the app.
   -->
   <PropertyGroup>
-    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.ios</PackageId>
-    <Description>FFmpeg $(FFmpegVersion) $(Cell) xcframeworks for iOS (device and simulator). Referenced by DevEnvy.FFmpeg.Binaries.$(Cell).</Description>
+    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.$(Rid)</PackageId>
+    <Description>FFmpeg $(FFmpegVersion) $(Cell) frameworks for $(Rid). Referenced by DevEnvy.FFmpeg.Binaries.$(Cell).</Description>
     <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
 
     <TargetFramework>netstandard2.0</TargetFramework>
@@ -20,7 +20,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <NoWarn>NU5128;NU5100</NoWarn>
 
-    <StagingDir Condition="'$(StagingDir)' == ''">$(MSBuildThisFileDirectory)../../staging/$(Cell)/ios/</StagingDir>
+    <StagingDir Condition="'$(StagingDir)' == ''">$(MSBuildThisFileDirectory)../../staging/$(Cell)/$(Rid)/</StagingDir>
     <TargetsFile Condition="'$(TargetsFile)' == ''">$(MSBuildThisFileDirectory)../../.nuspec-gen/$(PackageId).targets</TargetsFile>
   </PropertyGroup>
 
@@ -34,7 +34,7 @@
     <!-- Globs the whole staging dir, not *.xcframework/**: a wildcard in the
          directory portion would drop the bundle name from %(RecursiveDir) and
          flatten all six frameworks on top of each other. -->
-    <None Include="$(StagingDir)**" Exclude="$(StagingDir)legal/**" PackagePath="frameworks/" Pack="true" />
+    <None Include="$(StagingDir)frameworks/**" PackagePath="frameworks/" Pack="true" />
     <None Include="$(StagingDir)legal/**" PackagePath="legal/" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
