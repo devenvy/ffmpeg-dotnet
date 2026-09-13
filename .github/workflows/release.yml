@@ -16,6 +16,11 @@ on:
         description: "Series to release (e.g. 9.0). Empty releases every series whose version is not yet tagged."
         required: false
         type: string
+      dry_run:
+        description: "Pack and verify everything, then report what WOULD be pushed and tagged. Publishes nothing."
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -100,7 +105,38 @@ jobs:
           bash scripts/verify-packages.sh ./nupkgs
           bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
 
+      # A dry run still packs and verifies everything above - the point is to
+      # exercise the release path, not to skip it. Only the mutating steps are
+      # gated, so the first real release is not also the first execution.
+      - name: Report what a dry run would publish
+        if: inputs.dry_run
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          echo "DRY RUN - nothing will be pushed or tagged."
+          echo
+          echo "would push, in this order:"
+          echo "  phase 1 (payloads + helper):"
+          for f in nupkgs/*.nupkg; do
+            case "$(basename "$f")" in *.Runtime.All.[0-9]*) continue ;; esac
+            echo "    $(basename "$f")  [$(du -h "$f" | cut -f1)]"
+          done
+          echo "  phase 2 (metas, after the feed indexes phase 1):"
+          for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
+            [ -e "$f" ] || continue
+            echo "    $(basename "$f")"
+          done
+          echo
+          echo "would tag:    v${{ matrix.version }}"
+          echo "would create: release v${{ matrix.version }} from upstream ${{ matrix.upstream }}"
+          if [ -n "${NUGET_KEY}" ]; then
+            echo "NUGET_API_KEY: present"
+          else
+            echo "NUGET_API_KEY: MISSING - a real run would fail at the push step"
+          fi
+
       - name: Push base packages
+        if: ${{ !inputs.dry_run }}
         env:
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
@@ -115,6 +151,7 @@ jobs:
       # The metas carry exact dependencies on the packages just pushed and
       # cannot restore until the feed has indexed them.
       - name: Push meta packages
+        if: ${{ !inputs.dry_run }}
         env:
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
@@ -125,6 +162,7 @@ jobs:
           done
 
       - name: Tag and create release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
