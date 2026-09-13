@@ -149,7 +149,25 @@ Upstream's fourth component is a global counter shared across series — `8.1.2.
 ship together — so per series it has gaps. Giving each counter its own digit range keeps them
 from drifting into each other and makes the mapping reversible.
 
-Several FFmpeg series are tracked at once from `versions.json`; each releases independently.
+Several FFmpeg series are tracked at once from `versions.json`, and each releases
+independently — an 8.1 upstream release ships as soon as it appears, whether or not 9.0 has
+moved. Neither series waits for the other and their version lines never collide:
+
+```
+8.1.2.500 < 8.1.2.600 < 9.0.1.500 < 9.0.1.501 < 9.0.1.600
+```
+
+### Staying on a series
+
+Because 9.0's versions sort above 8.1's, a floating reference always lands on the newest
+series. To track 8.1 and keep receiving its updates, use a range:
+
+```xml
+<PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.linux-x64" Version="[8.1,9.0)" />
+```
+
+That picks up every 8.1 release and never crosses to 9.0. Pin an exact version
+(`[8.1.2.500]`) if you want no movement at all.
 
 ## Migrating from `DevEnvy.FFmpeg.Binaries.LGPL`
 

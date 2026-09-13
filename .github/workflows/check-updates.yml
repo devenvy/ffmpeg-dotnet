@@ -42,8 +42,11 @@ jobs:
             # shellcheck disable=SC2016
             current=$(jq -r --arg s "$series" '.series[$s]' versions.json)
 
+            # Exact field comparison rather than a regex built by bash pattern
+            # substitution: ${series//./\.} does not actually escape the dots,
+            # leaving separators as wildcards that can match another series.
             latest=$(echo "${UPSTREAM}" \
-              | grep -E "^${series//./\.}\.[0-9]+\.[0-9]+$" \
+              | awk -F. -v s="${series}" 'NF == 4 && $1 "." $2 == s' \
               | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n \
               | tail -1 || true)
 
