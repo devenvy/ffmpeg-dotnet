@@ -24,6 +24,12 @@
     <TargetsFile Condition="'$(TargetsFile)' == ''">$(MSBuildThisFileDirectory)../../.nuspec-gen/$(PackageId).targets</TargetsFile>
   </PropertyGroup>
 
+  <!-- Every payload package brings the locator, so a single PackageReference
+       gives a consumer both the binaries and a supported way to find them. -->
+  <ItemGroup>
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries" Version="$(Version)" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Globs the whole staging dir, not *.xcframework/**: a wildcard in the
          directory portion would drop the bundle name from %(RecursiveDir) and

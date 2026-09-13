@@ -303,6 +303,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
         -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/${rid}")/" \
         -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.${rid}.targets")" \
         -p:FFmpegVersion="${FFMPEG_VERSION}" -p:Version="${NUGET_VERSION}" \
+        -p:RestoreAdditionalProjectSources="$(to_native_path "${OUTPUT_DIR}")" \
         -o "${OUTPUT_DIR}" --nologo -v quiet
       echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.${rid}"
     done
@@ -318,6 +319,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
         -p:StagingDir="$(to_native_path "${STAGING_DIR}/${pc}/ios")/" \
         -p:TargetsFile="$(to_native_path "${NUSPEC_DIR}/DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios.targets")" \
         -p:FFmpegVersion="${FFMPEG_VERSION}" -p:Version="${NUGET_VERSION}" \
+        -p:RestoreAdditionalProjectSources="$(to_native_path "${OUTPUT_DIR}")" \
         -o "${OUTPUT_DIR}" --nologo -v quiet
       echo "  packed DevEnvy.FFmpeg.Binaries.${pc}.Runtime.ios"
     done

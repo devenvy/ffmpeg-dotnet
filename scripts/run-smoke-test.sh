@@ -58,6 +58,14 @@ cat > "${WORK}/nuget.config" <<EOF
 EOF
 
 PKG_CELL="${PKG_CELL:-LGPLv2}"
+
+# NuGet caches by id+version and never re-extracts a version it already has, so
+# repacking the same 0.0.0-* version locally would otherwise test a stale copy.
+# POSIX sh here (Alpine has no bash), so no 'local'.
+NUGET_CACHE="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
+[ -d "${NUGET_CACHE}" ] && rm -rf "${NUGET_CACHE}"/devenvy.ffmpeg.binaries*
+true
+
 PKG_VERSION="${PKG_VERSION:-0.0.0-ci}"
 
 cd "${WORK}"

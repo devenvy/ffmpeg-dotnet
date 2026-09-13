@@ -29,6 +29,16 @@ trap 'rm -rf "${WORK}"' EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# NuGet caches by id+version and never re-extracts a version it already has, so
+# repacking the same 0.0.0-* version locally would otherwise test a stale copy.
+purge_cache() {
+  local root="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
+  [ -d "${root}" ] || return 0
+  rm -rf "${root}"/devenvy.ffmpeg.binaries*
+}
+purge_cache
+
+
 scaffold() {
   local dir="$1"
   rm -rf "${dir}"
