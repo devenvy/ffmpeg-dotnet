@@ -275,31 +275,30 @@ jobs:
       - name: Select the newest installed Xcode
         run: |
           set -euo pipefail
-          # Skip symlinks. The image publishes each Xcode under both a
-          # canonical name and a patch alias -- Xcode_26.6.0.app is a symlink
-          # to Xcode_26.6.app -- and Apple tooling aborts when DEVELOPER_DIR
-          # points at the alias. That is what killed this step at exit 134:
-          # xcrun raised SIGABRT on the alias, which no exit-status guard can
-          # catch, so the loop died before reaching the real bundle. Testing
-          # for the SDK directory could not have rejected it either, since
-          # both that test and xcodebuild -version follow the link happily.
+          # Choose without running anything. Probing candidates with xcrun
+          # was itself the failure: it raised SIGABRT on Xcode 26.6, and a
+          # signal death is not an exit status any guard can absorb, so the
+          # step died mid-loop instead of moving on. Selection needs no
+          # subprocess - the directory name carries the version.
+          #
+          # Symlinks are skipped because the image publishes every Xcode
+          # twice, canonical plus a patch alias (Xcode_26.6.0.app links to
+          # Xcode_26.6.app), and Apple tooling misbehaves when DEVELOPER_DIR
+          # names the alias. Version-sort rather than relying on glob order,
+          # which is lexical and would rank a future 26.10 below 26.6.
           usable="$(mktemp)"
           for candidate in /Applications/Xcode*.app; do
             if [ -L "${candidate}" ]; then
-              echo "  alias:  ${candidate}"
-              continue
-            fi
-            dev="${candidate}/Contents/Developer"
-            if [ -d "${dev}" ] && DEVELOPER_DIR="${dev}" xcrun --sdk macosx --find clang >/dev/null 2>&1; then
-              version="$(DEVELOPER_DIR="${dev}" xcodebuild -version 2>/dev/null | head -1 | cut -d" " -f2)"
-              echo "  usable: ${candidate} (Xcode ${version})"
-              echo "${version} ${candidate}" >> "${usable}"
+              echo "  alias:     ${candidate}"
+            elif [ -d "${candidate}/Contents/Developer" ]; then
+              echo "  candidate: ${candidate}"
+              echo "${candidate}" >> "${usable}"
             else
-              echo "  broken: ${candidate}"
+              echo "  no dev:    ${candidate}"
             fi
           done
-          newest="$(sort -V "${usable}" | tail -1 | cut -d" " -f2)"
-          test -n "${newest}" || { echo "FAIL: no installed Xcode has a working macosx toolchain"; exit 1; }
+          newest="$(sort -V "${usable}" | tail -1)"
+          test -n "${newest}" || { echo "FAIL: no usable Xcode found"; exit 1; }
           sudo xcode-select -s "${newest}/Contents/Developer"
           xcodebuild -version
 
