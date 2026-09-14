@@ -23,36 +23,67 @@ env:
   PKG_VERSION: 0.0.0-ci
 
 jobs:
+  # Every job below is a cross product of platform and tracked series, built
+  # here rather than declared per job. A matrix cannot express that with
+  # `include`: a second include entry carrying the same keys cannot merge into
+  # combinations the first already filled, so GitHub emits it as a standalone
+  # entry with no series attached and those jobs silently test nothing.
+  # Generating the combinations also means adding a series to versions.json
+  # extends the whole matrix with no edit here.
   resolve:
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.v.outputs.tag }}
+      pack_matrix: ${{ steps.m.outputs.pack_matrix }}
+      meta_matrix: ${{ steps.m.outputs.meta_matrix }}
+      native_matrix: ${{ steps.m.outputs.native_matrix }}
+      musl_matrix: ${{ steps.m.outputs.musl_matrix }}
+      armhf_matrix: ${{ steps.m.outputs.armhf_matrix }}
+      android_matrix: ${{ steps.m.outputs.android_matrix }}
+      catalyst_matrix: ${{ steps.m.outputs.catalyst_matrix }}
+      ios_matrix: ${{ steps.m.outputs.ios_matrix }}
     steps:
       - uses: actions/checkout@v4
-      - id: v
-        run: echo "tag=$(jq -r '.series["9.0"]' versions.json)" >> "$GITHUB_OUTPUT"
+      - id: m
+        run: |
+          set -euo pipefail
+          python3 - versions.json >> "$GITHUB_OUTPUT" <<'GENEOF'
+          import json, sys
 
-  # One package per job so each platform downloads ~30 MB instead of the ~415 MB
-  # the whole cell weighs.
+          ARTIFACTS = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-armhf",
+                       "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64",
+                       "android-arm64", "android-x64", "ios"]
+          NATIVE = [("win-x64", "windows-latest"), ("win-arm64", "windows-11-arm"),
+                    ("linux-x64", "ubuntu-latest"), ("linux-arm64", "ubuntu-24.04-arm"),
+                    ("osx-x64", "macos-15-intel"), ("osx-arm64", "macos-latest")]
+          MUSL = [("linux-musl-x64", "ubuntu-latest"), ("linux-musl-arm64", "ubuntu-24.04-arm")]
+          ANDROID = [("android-arm64", "arm64", "arm64-v8a"), ("android-x64", "x64", "x86_64")]
+          CATALYST = ["maccatalyst-arm64", "maccatalyst-x64"]
+
+          series = json.load(open(sys.argv[1]))["series"]
+          def inc(rows): return json.dumps({"include": rows}, separators=(",", ":"))
+
+          out = {
+            "pack":     inc([{"series": s, "tag": t, "artifact": a} for s, t in series.items() for a in ARTIFACTS]),
+            "meta":     inc([{"series": s, "tag": t} for s, t in series.items()]),
+            "native":   inc([{"series": s, "rid": r, "os": o} for s in series for r, o in NATIVE]),
+            "musl":     inc([{"series": s, "rid": r, "os": o} for s in series for r, o in MUSL]),
+            "armhf":    inc([{"series": s} for s in series]),
+            "android":  inc([{"series": s, "rid": r, "abi": ab, "jni": j} for s in series for r, ab, j in ANDROID]),
+            "catalyst": inc([{"series": s, "rid": r} for s in series for r in CATALYST]),
+            "ios":      inc([{"series": s} for s in series]),
+          }
+          for k, v in out.items():
+              print(k + "_matrix=" + v)
+          GENEOF
+          echo "generated matrices:"
+          cut -d= -f1 "$GITHUB_OUTPUT" | sed 's/^/  /'
+
   pack:
     needs: resolve
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        artifact:
-          - win-x64
-          - win-arm64
-          - linux-x64
-          - linux-arm64
-          - linux-armhf
-          - linux-musl-x64
-          - linux-musl-arm64
-          - osx-x64
-          - osx-arm64
-          - android-arm64
-          - android-x64
-          - ios
+      matrix: ${{ fromJson(needs.resolve.outputs.pack_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -61,47 +92,43 @@ jobs:
       - name: Pack ${{ matrix.artifact }}
         run: |
           if [[ "${{ matrix.artifact }}" == "ios" ]]; then
-            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase base
+            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
           else
-            RIDS="${{ matrix.artifact }}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase base
+            RIDS="${{ matrix.artifact }}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: pkg-${{ matrix.artifact }}
+          name: pkg-${{ matrix.series }}-${{ matrix.artifact }}
           path: out/*.nupkg
           retention-days: 1
 
   pack-meta:
     needs: resolve
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.meta_matrix) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - run: CELLS="$CELL" bash scripts/pack.sh "${{ needs.resolve.outputs.tag }}" "$PKG_VERSION" --output ./out --phase meta
+      - run: CELLS="$CELL" bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase meta
       - uses: actions/upload-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: out/*.nupkg
           retention-days: 1
 
   # Native hosted runners: the binary under test is executed on the hardware and
   # libc it was built for.
   native:
-    needs: [pack, pack-meta]
+    needs: [resolve, pack, pack-meta]
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { rid: win-x64,     os: windows-latest }
-          - { rid: win-arm64,   os: windows-11-arm }
-          - { rid: linux-x64,   os: ubuntu-latest }
-          - { rid: linux-arm64, os: ubuntu-24.04-arm }
-          - { rid: osx-x64,     os: macos-15-intel }
-          - { rid: osx-arm64,   os: macos-latest }
-    name: ${{ matrix.rid }}
+      matrix: ${{ fromJson(needs.resolve.outputs.native_matrix) }}
+    name: ${{ matrix.rid }} (${{ matrix.series }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -110,11 +137,11 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-${{ matrix.rid }}
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
       - name: Smoke test
         shell: bash
@@ -123,25 +150,22 @@ jobs:
   # musl has no dedicated runner, but an Alpine container on the matching
   # architecture runs natively - this is containerization, not emulation.
   musl:
-    needs: [pack, pack-meta]
+    needs: [resolve, pack, pack-meta]
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { rid: linux-musl-x64,   os: ubuntu-latest }
-          - { rid: linux-musl-arm64, os: ubuntu-24.04-arm }
-    name: ${{ matrix.rid }}
+      matrix: ${{ fromJson(needs.resolve.outputs.musl_matrix) }}
+    name: ${{ matrix.rid }} (${{ matrix.series }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-${{ matrix.rid }}
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
       # Not `container:` - actions/checkout needs Node, which the Alpine SDK
       # image does not ship. Running docker explicitly keeps the checkout and
@@ -152,8 +176,11 @@ jobs:
 
   # 32-bit ARM is the one RID with no hosted runner, native or containerized.
   armhf:
-    needs: [pack, pack-meta]
-    name: linux-arm (qemu)
+    needs: [resolve, pack, pack-meta]
+    name: linux-arm qemu (${{ matrix.series }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.armhf_matrix) }}
     runs-on: ubuntu-24.04-arm
     # linux-arm is the only RID with no native runner, and GitHub's arm64 hosts
     # have no 32-bit EL0, so armv7 always runs under emulation here.
@@ -171,11 +198,11 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-linux-armhf
+          name: pkg-${{ matrix.series }}-linux-armhf
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
 
       - name: Publish the smoke test for linux-arm (native, not emulated)
@@ -195,16 +222,13 @@ jobs:
   # runtime linker will find; a framework inside the .app bundle is one the
   # dynamic loader will find.
   android:
-    needs: [pack, pack-meta]
+    needs: [resolve, pack, pack-meta]
     timeout-minutes: 30
-    name: android-${{ matrix.abi }}
+    name: android-${{ matrix.abi }} (${{ matrix.series }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { rid: android-arm64, abi: arm64, jni: arm64-v8a }
-          - { rid: android-x64,   abi: x64,   jni: x86_64 }
+      matrix: ${{ fromJson(needs.resolve.outputs.android_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -212,11 +236,11 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-${{ matrix.rid }}
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
 
       - run: dotnet workload install android --skip-sign-check
@@ -240,16 +264,12 @@ jobs:
           echo "PASS: FFmpeg libraries and libc++_shared are packed into the APK"
 
   maccatalyst:
-    needs: [pack, pack-meta]
+    needs: [resolve, pack, pack-meta]
     timeout-minutes: 30
-    name: ${{ matrix.rid }}
+    name: ${{ matrix.rid }} (${{ matrix.series }})
     strategy:
       fail-fast: false
-      matrix:
-        # This job builds and inspects the bundle, it does not execute it, so
-        # the x64 leg cross-compiles rather than needing an Intel host. The
-        # older Intel image also carries an Xcode the Catalyst pack rejects.
-        rid: [maccatalyst-arm64, maccatalyst-x64]
+      matrix: ${{ fromJson(needs.resolve.outputs.catalyst_matrix) }}
     # Pinned rather than macos-latest, which moved from macOS 15 (default Xcode
     # 16.4) to macOS 26 partway through these runs, so identical revisions of
     # this file saw different toolchains.
@@ -261,11 +281,11 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-ios
+          name: pkg-${{ matrix.series }}-ios
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
 
       # The image ships several Xcodes and its default is not always the
@@ -327,9 +347,12 @@ jobs:
           echo "PASS: Catalyst frameworks resolved through NativeReference and embedded"
 
   ios:
-    needs: [pack, pack-meta]
+    needs: [resolve, pack, pack-meta]
     timeout-minutes: 30
-    name: ios
+    name: ios (${{ matrix.series }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.ios_matrix) }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -338,11 +361,11 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-ios
+          name: pkg-${{ matrix.series }}-ios
           path: feed
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-meta
+          name: pkg-meta-${{ matrix.series }}
           path: feed
 
       - run: dotnet workload install ios --skip-sign-check
