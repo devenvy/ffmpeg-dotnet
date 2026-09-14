@@ -246,11 +246,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Catalyst binaries actually execute, so each arch gets its native host.
-          - { rid: maccatalyst-arm64, os: macos-latest }
-          - { rid: maccatalyst-x64,   os: macos-15-intel }
-    runs-on: ${{ matrix.os }}
+        # This job builds and inspects the bundle, it does not execute it, so
+        # the x64 leg cross-compiles rather than needing an Intel host. The
+        # older Intel image also carries an Xcode the Catalyst pack rejects.
+        rid: [maccatalyst-arm64, maccatalyst-x64]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -265,6 +265,18 @@ jobs:
           name: pkg-meta
           path: feed
 
+      # The image ships several Xcodes and its default is not always the
+      # newest; the Catalyst pack refuses to build against one older than it
+      # requires. Select the newest installed rather than pinning a version
+      # that image updates would invalidate.
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          newest=$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -1)
+          find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | sed 's/^/  installed: /'
+          sudo xcode-select -s "${newest}/Contents/Developer"
+          xcodebuild -version
+
       - run: dotnet workload install maccatalyst --skip-sign-check
 
       - name: Build a Catalyst head and inspect the app bundle
@@ -274,7 +286,11 @@ jobs:
           cd .mobile/maccatalyst
           dotnet build -c Release -f net10.0-maccatalyst -r "${{ matrix.rid }}"
 
-          app=$(find . -name '*.app' -type d | head -1)
+          # Under bin/ specifically: obj/ holds a codesign staging copy of the
+          # bundle whose framework directories exist but are not yet populated,
+          # and find walks into it first, so inspecting it reported an empty
+          # Frameworks/ for a build that embedded everything correctly.
+          app=$(find bin -name '*.app' -type d | head -1)
           echo "App bundle: ${app}"
           find "${app}" -maxdepth 3 -name '*.framework' -exec basename {} \; | sort | sed 's/^/  /'
 
@@ -311,7 +327,11 @@ jobs:
           cd .mobile/ios
           dotnet build -c Release -f net10.0-ios -r iossimulator-arm64
 
-          app=$(find . -name '*.app' -type d | head -1)
+          # Under bin/ specifically: obj/ holds a codesign staging copy of the
+          # bundle whose framework directories exist but are not yet populated,
+          # and find walks into it first, so inspecting it reported an empty
+          # Frameworks/ for a build that embedded everything correctly.
+          app=$(find bin -name '*.app' -type d | head -1)
           echo "App bundle: ${app}"
           find "${app}/Frameworks" -maxdepth 1 -mindepth 1 -exec basename {} \; | sed 's/^/  /'
 

@@ -146,7 +146,10 @@ EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-maccatalyst</TargetFramework>
-    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <!-- The Catalyst SDK rejects anything below 15.0 outright. The value is
+         an iOS API level, not a macOS one: 15.0 here pairs with the 11.0
+         LSMinimumSystemVersion below. -->
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ApplicationId>com.devenvy.ffmpeg.mobiletest</ApplicationId>
