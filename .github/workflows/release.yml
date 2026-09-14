@@ -53,20 +53,37 @@ jobs:
       - id: plan
         env:
           FORCE: ${{ inputs.force_rebuild && '1' || '' }}
+          # Through the environment rather than interpolated into the script:
+          # a quote in the dispatch input would otherwise land in the middle
+          # of a bash condition and break parsing.
+          ONLY_SERIES: ${{ inputs.series }}
         run: |
           set -euo pipefail
           entries=()
-          if [[ -n "${FORCE}" && -z "${{ inputs.series }}" ]]; then
+          if [ -n "${FORCE}" ] && [ -z "${ONLY_SERIES}" ]; then
             echo "::error::force_rebuild requires an explicit series. Rebuilding every"
             echo "::error::tracked series at once would burn a version number for each."
             exit 1
           fi
 
-          for series in $(jq -r '.series | keys[]' versions.json); do
-            if [[ -n "${{ inputs.series }}" && "${series}" != "${{ inputs.series }}" ]]; then
+          # A requested series that matches nothing would otherwise fall
+          # through the loop and report a successful release of nothing, so a
+          # typo in the dispatch input looks like a no-op rather than an error.
+          if [ -n "${ONLY_SERIES}" ]; then
+            jq -e --arg s "${ONLY_SERIES}" '.series | has($s)' versions.json >/dev/null || {
+              echo "::error::series ${ONLY_SERIES} is not tracked in versions.json."
+              echo "::error::Tracked: $(jq -r '.series | keys | join(", ")' versions.json)"
+              exit 1
+            }
+          fi
+
+          # read rather than word-splitting $(jq ...): a series key is data,
+          # and IFS splitting would mangle one containing whitespace.
+          while IFS= read -r series; do
+            if [ -n "${ONLY_SERIES}" ] && [ "${series}" != "${ONLY_SERIES}" ]; then
               continue
             fi
-            tag=$(jq -r --arg s "$series" '.series[$s]' versions.json)
+            tag="$(jq -r --arg s "${series}" '.series[$s]' versions.json)"
 
             # compute-version.sh exits 3 when this upstream build has already
             # shipped. That is the real idempotency check: it cannot be done by
@@ -83,15 +100,28 @@ jobs:
                  cat /tmp/cv.err >&2
                  exit "${rc}" ;;
             esac
-            entries+=("{\"series\":\"${series}\",\"upstream\":\"${tag}\",\"version\":\"${version}\"}")
-          done
-          if [[ ${#entries[@]} -eq 0 ]]; then
+            # Built by jq, not string concatenation: a stray quote in any of
+            # these would otherwise emit malformed JSON that fails later, in
+            # fromJson, with no indication of which value caused it.
+            entries+=("$(jq -cn --arg s "${series}" --arg u "${tag}" --arg v "${version}" '{series: $s, upstream: $u, version: $v}')")
+          done < <(jq -r '.series | keys[]' versions.json)
+
+          # Each entry is already a jq-produced object, so joining them with
+          # commas cannot malform the result; jq -e then refuses to emit
+          # anything that is not valid JSON.
+          matrix="{\"include\":[$(IFS=,; echo "${entries[*]+${entries[*]}}")]}"
+          echo "${matrix}" | jq -e . >/dev/null || {
+            echo "::error::planner produced invalid matrix JSON: ${matrix}"
+            exit 1
+          }
+          if [ "${#entries[@]}" -eq 0 ]; then
             echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
           else
             echo "any=true" >> "$GITHUB_OUTPUT"
-            printf 'matrix={"include":[%s]}\n' "$(IFS=,; echo "${entries[*]}")" >> "$GITHUB_OUTPUT"
+            echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           fi
+          echo "plan: ${matrix}"
 
   release:
     name: Release ${{ matrix.version }}
@@ -179,12 +209,33 @@ jobs:
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
+          set -euo pipefail
+          # nuget.org push gets no retry otherwise, unlike the download path
+          # in pack.sh. One flaky upload partway through aborts the job and
+          # costs a whole pack-and-verify cycle to resume, so each push is
+          # attempted a few times with backoff. --skip-duplicate keeps a retry
+          # after a push that actually succeeded harmless.
+          push() {
+            local file="$1" attempt=1
+            while :; do
+              if dotnet nuget push "${file}" --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 4 ]; then
+                echo "::error::giving up on $(basename "${file}") after ${attempt} attempts"
+                return 1
+              fi
+              echo "push failed for $(basename "${file}"), retry ${attempt} in $(( attempt * 15 ))s"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+
           for f in nupkgs/*.nupkg; do
             case "$(basename "$f")" in
               *.Runtime.All.[0-9]*) continue ;;   # metas go in the second pass
             esac
-            dotnet nuget push "$f" --api-key "$NUGET_KEY" \
-              --source https://api.nuget.org/v3/index.json --skip-duplicate
+            push "$f"
           done
 
       # The metas depend on the payloads by exact version, so a consumer that
@@ -206,19 +257,72 @@ jobs:
         env:
           NUGET_KEY: ${{ steps.login_meta.outputs.NUGET_API_KEY }}
         run: |
+          set -euo pipefail
+          # nuget.org push gets no retry otherwise, unlike the download path
+          # in pack.sh. One flaky upload partway through aborts the job and
+          # costs a whole pack-and-verify cycle to resume, so each push is
+          # attempted a few times with backoff. --skip-duplicate keeps a retry
+          # after a push that actually succeeded harmless.
+          push() {
+            local file="$1" attempt=1
+            while :; do
+              if dotnet nuget push "${file}" --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 4 ]; then
+                echo "::error::giving up on $(basename "${file}") after ${attempt} attempts"
+                return 1
+              fi
+              echo "push failed for $(basename "${file}"), retry ${attempt} in $(( attempt * 15 ))s"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+
           for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
-            [[ -e "$f" ]] || continue
-            dotnet nuget push "$f" --api-key "$NUGET_KEY" \
-              --source https://api.nuget.org/v3/index.json --skip-duplicate
+            [ -e "$f" ] || continue
+            push "$f"
           done
 
+      # Finalization has to be resumable. Everything above it is already
+      # published and cannot be withdrawn, so a failure here must be fixable
+      # by re-running rather than leaving packages live with no tag and no
+      # release. Each action is conditional on its own absence: a re-run that
+      # finds the tag pushed moves on to the release, and one that finds both
+      # simply succeeds.
       - name: Tag and create release
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ matrix.version }}
+          UPSTREAM: ${{ matrix.upstream }}
         run: |
-          git tag "v${{ matrix.version }}"
-          git push origin "v${{ matrix.version }}"
-          gh release create "v${{ matrix.version }}" \
-            --title "v${{ matrix.version }}" \
-            --notes "FFmpeg ${{ matrix.upstream }} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${{ matrix.upstream }})."
+          set -euo pipefail
+          tag="v${VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            # A tag left by a partial earlier attempt must not be assumed to
+            # name this commit: pushing one that points elsewhere would
+            # mislabel which source produced the published packages.
+            at="$(git rev-parse "refs/tags/${tag}")"
+            if [ "${at}" != "${GITHUB_SHA}" ]; then
+              echo "::error::${tag} already exists at ${at}, not ${GITHUB_SHA}."
+              echo "::error::Refusing to move a release tag."
+              exit 1
+            fi
+            echo "${tag} already exists at this commit"
+          else
+            git tag "${tag}"
+          fi
+
+          if git ls-remote --exit-code --tags origin "${tag}" >/dev/null 2>&1; then
+            echo "${tag} already on origin"
+          else
+            git push origin "${tag}"
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} already exists"
+          else
+            gh release create "${tag}" --title "${tag}" --notes "FFmpeg ${UPSTREAM} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${UPSTREAM})."
+          fi

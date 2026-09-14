@@ -176,6 +176,19 @@ for pkg in packages:
         check(not payload, f"{name}: .All should carry no binaries of its own")
         all_metas[pkg_id] = platforms
 
+        # Every dependency must be pinned to this exact version. A meta is only
+        # useful because it drags in a matched set: a floating or stale range
+        # would let a consumer resolve payloads from a different build than the
+        # meta was produced from, and NuGet resolves the lowest version a range
+        # allows, so the drift would be silent and downward.
+        version = re.search(r"<version>([^<]+)</version>", nuspec_xml).group(1)
+        pinned = dict(re.findall(r'<dependency id="([^"]+)" version="([^"]+)"', nuspec_xml))
+        wrong = {i: v for i, v in pinned.items() if v != f"[{version}]"}
+        check(not wrong,
+              f"{name}: dependencies not pinned to [{version}]: {sorted(wrong.items())[:3]}")
+        check(len(pinned) == len(deps),
+              f"{name}: {len(deps) - len(pinned)} dependency/ies carry no version at all")
+
     size = pkg.stat().st_size / 1048576
     print(f"  {name}  ({size:.1f} MB, {len(payload)} payload file(s))")
 
