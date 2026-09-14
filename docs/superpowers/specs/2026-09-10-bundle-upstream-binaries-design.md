@@ -85,8 +85,29 @@ no compilation of its own.
   the iOS Vulkan discrepancy, and an aggregate checksum manifest — were each argued on grounds
   that hold for any consumer of these artifacts, and all landed upstream in `9.0.1.5` /
   `8.1.2.5` (devenvy/ffmpeg PRs #13–#16). This design targets that artifact set.
-- Supporting platforms upstream does not ship: `maccatalyst-*`, `android-arm` (32-bit),
-  `browser-wasm`, `tvos-*`, `iossimulator-x64`.
+- Supporting platforms upstream does not ship: `android-arm` (32-bit), `browser-wasm`,
+  `tvos-*`, `iossimulator-x64`. (`maccatalyst-*` landed upstream as a universal
+  `ios-arm64_x86_64-maccatalyst` slice and is now shipped as two RID packages.)
+
+### Open upstream ask: the Windows Vulkan hard import
+
+One item remains for upstream, raised because it breaks any consumer of the Windows
+artifacts, not just .NET. The `win-x64` `gplv3` and `lgplv3` cells list `vulkan-1.dll` in
+`avfilter`'s **normal import table**, so the loader resolves it at process start and
+`ffmpeg.exe` fails outright on any Windows host without a Vulkan loader - headless servers,
+Server Core, containers, VMs with no GPU driver. `win-arm64` has no such import, so the same
+cell behaves differently per architecture.
+
+It is not inherent to `--enable-vulkan`. FFmpeg's own Vulkan code resolves the loader at
+runtime by name, and BtbN/FFmpeg-Builds - the reference Windows distribution - ships the
+identical `--enable-vulkan --enable-libplacebo` with no import-table entry and a working
+`scale_vulkan` filter. Ours has the hard import but *not* the filter, which points at the
+build linking `vulkan-1.lib` while the filters themselves are disabled at configure time for
+want of glslang/shaderc or libplacebo.
+
+Ask: drop the Vulkan import library from the link line and let FFmpeg load `vulkan-1.dll`
+dynamically, and check why `--enable-vulkan` is not producing the filters that dependency is
+being paid for.
 
 ## Upstream artifact inventory
 
