@@ -9,7 +9,17 @@ Kept as its own file rather than a heredoc inside the shell wrapper, because
 `python3 - <<EOF` discards the interpreter's exit code - the wrapper reported
 success even when this printed FAILURES.
 """
-import sys, zipfile, pathlib, collections, json, re, struct
+import sys, zipfile, pathlib, collections, json, re, struct, importlib.util
+
+# The PE parser and the Windows system-DLL allowlist already exist in
+# audit-upstream.py and are loaded rather than duplicated, so the allowlist has
+# one definition to keep current. The hyphen in the filename rules out a plain
+# import.
+_spec = importlib.util.spec_from_file_location(
+    "_audit", pathlib.Path(__file__).parent / "audit-upstream.py")
+_audit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_audit)
+_pe, _SYSTEM_DLL = _audit.pe, _audit.SYSTEM_DLL
 
 directory = pathlib.Path(sys.argv[1])
 packages = sorted(directory.glob("*.nupkg"))
@@ -132,6 +142,30 @@ for pkg in packages:
         rid = pkg_id.rsplit(".", 1)[1]
         stray = [n for n in payload if not n.startswith(f"runtimes/{rid}/native/")]
         check(not stray, f"{name}: payload outside runtimes/{rid}/native/: {stray[:3]}")
+
+    # A Windows library that hard-imports a DLL the package does not ship and
+    # Windows does not guarantee cannot be loaded at all on a host lacking it:
+    # the loader resolves the whole import table at process start, so a single
+    # missing dependency means ffmpeg.exe will not launch, with no way for the
+    # consumer to catch it. This is how a build machine's incidental SDK leaks
+    # into a package - the artifact runs fine where it was built and nowhere
+    # else. Delay imports are exempt: they resolve on first use, so they cost a
+    # feature rather than the process.
+    if pkg_id.rsplit(".", 1)[1].startswith("win-"):
+        shipped = {n.rsplit("/", 1)[-1].lower()
+                   for n in payload if n.lower().endswith((".dll", ".exe"))}
+        for entry in payload:
+            if not entry.lower().endswith((".dll", ".exe")):
+                continue
+            parsed = _pe(z.read(entry))
+            if not parsed:
+                continue
+            foreign = sorted({d for d in parsed["imports"]
+                              if d.lower() not in shipped and not _SYSTEM_DLL.match(d)})
+            check(not foreign,
+                  f"{name}: {entry.rsplit('/', 1)[-1]} hard-imports "
+                  f"{foreign}, which the package does not ship and Windows does "
+                  f"not guarantee - it will fail to load on a host without it")
 
     # The .All meta must reach every platform, or a RID-less consumer silently
     # loses one.
