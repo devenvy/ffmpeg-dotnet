@@ -59,14 +59,11 @@ jobs:
       - id: tag
         run: echo "tag=$(jq -r '.series["${{ matrix.series }}"]' versions.json)" >> "$GITHUB_OUTPUT"
 
-      # One RID per artifact shape: flat-DLL Windows, symlinked glibc Linux,
-      # musl (whose RID falls back to linux-x64), dylib macOS, and Android with
-      # its NDK ABI directory and bundled headers.
-      - name: Pack representative RIDs
-        run: |
-          RIDS="win-x64 linux-x64 linux-musl-x64 osx-arm64 android-arm64" \
-          CELLS="lgplv2" \
-          bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+      # Every RID, for every tracked series. A subset here would leave the
+      # series that upstream moved less recently packing platforms nothing
+      # had built since, and the release packs all of them for both.
+      - name: Pack every RID
+        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
 
       # The v3 cells carry the GPL-only third-party libraries, so they are where
       # a build machine's incidental SDK shows up as a hard import. Packing one
@@ -81,7 +78,7 @@ jobs:
         run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase meta
 
       - name: Verify package contents
-        run: bash scripts/verify-packages.sh ./nupkgs
+        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
 
       - name: Verify consumer restore and build
         run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
