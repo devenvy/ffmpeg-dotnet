@@ -272,8 +272,25 @@ jobs:
       - name: Select the newest installed Xcode
         run: |
           set -euo pipefail
-          newest=$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -1)
-          find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | sed 's/^/  installed: /'
+          # Pick by what the candidate actually contains, not by name. The
+          # image carries both Xcode_26.6.app and an Xcode_26.6.0.app that has
+          # no MacOSX SDK inside it, and a version sort ranks the broken one
+          # last, so selecting the highest-numbered directory got a toolchain
+          # whose clang could not be found at all.
+          # A plain glob orders lexically, which would rank a future 26.10
+          # below 26.6, so the validated candidates are version-sorted.
+          usable="$(mktemp)"
+          for candidate in /Applications/Xcode*.app; do
+            sdk="${candidate}/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            if [ -d "${sdk}" ]; then
+              echo "  usable:   ${candidate}"
+              echo "${candidate}" >> "${usable}"
+            else
+              echo "  no SDK:   ${candidate}"
+            fi
+          done
+          newest="$(sort -V "${usable}" | tail -1)"
+          test -n "${newest}" || { echo "FAIL: no installed Xcode has a MacOSX SDK"; exit 1; }
           sudo xcode-select -s "${newest}/Contents/Developer"
           xcodebuild -version
 
