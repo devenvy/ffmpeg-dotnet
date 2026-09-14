@@ -239,6 +239,50 @@ jobs:
           done
           echo "PASS: FFmpeg libraries and libc++_shared are packed into the APK"
 
+  maccatalyst:
+    needs: [pack, pack-meta]
+    timeout-minutes: 30
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Catalyst binaries actually execute, so each arch gets its native host.
+          - { rid: maccatalyst-arm64, os: macos-latest }
+          - { rid: maccatalyst-x64,   os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-ios
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta
+          path: feed
+
+      - run: dotnet workload install maccatalyst --skip-sign-check
+
+      - name: Build a Catalyst head and inspect the app bundle
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh maccatalyst "$PWD/feed" "${{ matrix.rid }}"
+          cd .mobile/maccatalyst
+          dotnet build -c Release -f net10.0-maccatalyst -r "${{ matrix.rid }}"
+
+          app=$(find . -name '*.app' -type d | head -1)
+          echo "App bundle: ${app}"
+          find "${app}" -maxdepth 3 -name '*.framework' -exec basename {} \; | sort | sed 's/^/  /'
+
+          for fw in libavcodec libavutil libavformat; do
+            find "${app}" -name "${fw}" -path '*.framework/*' | grep -q .               || { echo "FAIL: ${fw}.framework not embedded"; exit 1; }
+          done
+          echo "PASS: Catalyst frameworks resolved through NativeReference and embedded"
+
   ios:
     needs: [pack, pack-meta]
     timeout-minutes: 30

@@ -13,7 +13,7 @@ set -euo pipefail
 # exactly where the runtime linker looks, so their contents are the assertion.
 # ==============================================================================
 
-PLATFORM="${1:?Usage: new-mobile-test.sh <android|ios> <feed-dir> <rid>}"
+PLATFORM="${1:?Usage: new-mobile-test.sh <android|ios|maccatalyst> <feed-dir> <rid>}"
 FEED="${2:?feed dir}"
 RID="${3:?rid}"
 
@@ -133,6 +133,59 @@ EOF
   <key>LSRequiresIPhoneOS</key><true/>
   <key>MinimumOSVersion</key><string>13.0</string>
   <key>UIDeviceFamily</key><array><integer>1</integer></array>
+</dict>
+</plist>
+EOF
+    ;;
+
+  maccatalyst)
+    # Catalyst is UIKit-on-macOS: an iOS-API app built against the macOS SDK
+    # with an ios*-macabi triple. It consumes native code the same way iOS
+    # does, through @(NativeReference).
+    cat > "${OUT}/MobileTest.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-maccatalyst</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ApplicationId>com.devenvy.ffmpeg.mobiletest</ApplicationId>
+    <RuntimeIdentifier>${RID}</RuntimeIdentifier>
+    <CodesignKey></CodesignKey>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Runtime.${RID}" Version="${PKG_VERSION}" />
+  </ItemGroup>
+</Project>
+EOF
+    cat > "${OUT}/Main.cs" <<'EOF'
+using UIKit;
+using Foundation;
+
+namespace MobileTest
+{
+    public class Application
+    {
+        public static void Main(string[] args) => UIApplication.Main(args, null, typeof(AppDelegate));
+    }
+
+    [Register(nameof(AppDelegate))]
+    public class AppDelegate : UIApplicationDelegate
+    {
+        public override UIWindow? Window { get; set; }
+    }
+}
+EOF
+    cat > "${OUT}/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.devenvy.ffmpeg.mobiletest</string>
+  <key>CFBundleName</key><string>MobileTest</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
 </dict>
 </plist>
 EOF
