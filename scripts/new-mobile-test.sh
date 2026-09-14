@@ -146,9 +146,11 @@ EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-maccatalyst</TargetFramework>
-    <!-- The Catalyst SDK rejects anything below 15.0 outright. The value is
-         an iOS API level, not a macOS one: 15.0 here pairs with the 11.0
-         LSMinimumSystemVersion below. -->
+    <!-- An iOS API level, not a macOS one, and the Catalyst SDK rejects
+         anything below 15.0 outright. It is the single source of the bundle's
+         minimum OS: the SDK derives LSMinimumSystemVersion from it and errors
+         if the Info.plist states a different one, so the plist omits the key
+         rather than repeating a value that would have to be kept in step. -->
     <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
@@ -188,7 +190,6 @@ EOF
   <key>CFBundleName</key><string>MobileTest</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
 </dict>
 </plist>
 EOF
