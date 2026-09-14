@@ -27,10 +27,10 @@ Put this in your csproj and it works whether or not the build names a platform:
 
 ```xml
 <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
-  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.All" Version="9.0.1.500" />
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.All" Version="9.0.1.700" />
 </ItemGroup>
 <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
-  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(RuntimeIdentifier)" Version="9.0.1.500" />
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(RuntimeIdentifier)" Version="9.0.1.700" />
 </ItemGroup>
 ```
 
@@ -71,7 +71,7 @@ To get a clearer error, validate first:
 
 ```xml
 <PropertyGroup>
-  <FFmpegSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;android-arm64;android-x64;ios-arm64;iossimulator-arm64</FFmpegSupportedRids>
+  <FFmpegSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;android-arm64;android-x64;ios-arm64;iossimulator-arm64;maccatalyst-arm64;maccatalyst-x64</FFmpegSupportedRids>
 </PropertyGroup>
 <Target Name="ValidateFFmpegRid" BeforeTargets="CollectPackageReferences"
         Condition="'$(RuntimeIdentifier)' != '' AND !$([System.String]::Copy(';$(FFmpegSupportedRids);').Contains(';$(RuntimeIdentifier);'))">
@@ -125,24 +125,28 @@ upstream builds those platforms to be linked into an app, not shelled out to.
 | `osx-x64`, `osx-arm64` | |
 | `android-arm64`, `android-x64` | libraries only; `x64` is the emulator |
 | `ios-arm64`, `iossimulator-arm64` | one slice each, split from upstream's xcframework |
+| `maccatalyst-arm64`, `maccatalyst-x64` | one universal slice, shipped whole to both |
 
 Apple platforms consume native code through `@(NativeReference)` rather than
 `runtimes/{rid}/native`, so those packages ship `.framework` bundles. Upstream publishes one
 `.xcframework` holding every slice — right for Xcode, where one bundle serves every
 destination — and this repo splits it so each RID's package carries only its own slice.
 
-Not supported, because upstream does not build them: `maccatalyst-*`, 32-bit `android-arm`,
-`browser-wasm`, `tvos-*`, and the x86_64 iOS simulator. Mac Catalyst is a separate RID family
-in .NET — it resolves through `ios`, never `osx` — so the macOS builds do not cover it.
+Mac Catalyst is a separate RID family in .NET — it resolves through `ios`, never `osx` — so
+the macOS builds do not cover it. Upstream ships it as one universal `arm64 + x86_64` slice,
+which both Catalyst packages carry whole, as Apple distributes Catalyst frameworks.
+
+Not supported, because upstream does not build them: 32-bit `android-arm`, `browser-wasm`,
+`tvos-*`, and the x86_64 iOS simulator.
 
 ## Versioning
 
 Package versions are `{ffmpeg}.{z}` where `z = (upstream_build × 100) + our_build`.
 
 ```
-upstream 9.0.1.5, our build 0  ->  9.0.1.500
-upstream 9.0.1.5, our build 1  ->  9.0.1.501   (packaging fix, no upstream change)
-upstream 9.0.1.6, our build 0  ->  9.0.1.600
+upstream 9.0.1.5, our build 0  ->  9.0.1.700
+upstream 9.0.1.7, our build 1  ->  9.0.1.701   (packaging fix, no upstream change)
+upstream 9.0.1.8, our build 0  ->  9.0.1.800
 ```
 
 Upstream's fourth component is a global counter shared across series — `8.1.2.5` and `9.0.1.5`
@@ -154,7 +158,7 @@ independently — an 8.1 upstream release ships as soon as it appears, whether o
 moved. Neither series waits for the other and their version lines never collide:
 
 ```
-8.1.2.500 < 8.1.2.600 < 9.0.1.500 < 9.0.1.501 < 9.0.1.600
+8.1.2.700 < 8.1.2.800 < 9.0.1.700 < 9.0.1.501 < 9.0.1.600
 ```
 
 ### Staying on a series
@@ -170,7 +174,7 @@ A floating `8.1.*` resolves to the newest 8.1 release and never crosses to 9.0.
 
 Do **not** use a range like `[8.1,9.0)` for this: `PackageReference` resolves the
 *lowest* version a range allows, so it would pin you to the first 8.1 release and never
-move. Use an exact version (`[8.1.2.500]`) only when you want no movement at all.
+move. Use an exact version (`[8.1.2.700]`) only when you want no movement at all.
 
 ## Migrating from `DevEnvy.FFmpeg.Binaries.LGPL`
 

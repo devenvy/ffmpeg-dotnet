@@ -112,6 +112,10 @@ AUTH=()
 # download_and_verify — fetch one asset and check it against the release's
 # aggregate SHA256SUMS. Upstream publishes that manifest per release, so every
 # byte we pack is verified before it is extracted.
+#
+# The retry budget is deliberately large. A release pulls 84 assets from the
+# GitHub CDN, which intermittently returns 504 for minutes at a time; a short
+# budget turns that into a failed release rather than a slow one.
 ###############################################################################
 BASE_URL="https://github.com/${UPSTREAM_REPO}/releases/download/${UPSTREAM_TAG}"
 
@@ -119,7 +123,7 @@ fetch_checksums() {
   local dest="${DOWNLOAD_DIR}/SHA256SUMS"
   [[ -f "${dest}" ]] && return 0
   echo "==> Fetching SHA256SUMS for ${UPSTREAM_TAG}"
-  curl -fsSL "${AUTH[@]}" "${BASE_URL}/SHA256SUMS" -o "${dest}"
+  curl -fsSL --retry 10 --retry-delay 15 --retry-max-time 900 --retry-all-errors --connect-timeout 30 "${AUTH[@]}" "${BASE_URL}/SHA256SUMS" -o "${dest}"
 }
 
 download_and_verify() {
@@ -127,7 +131,7 @@ download_and_verify() {
 
   if [[ ! -f "${dest}" ]]; then
     echo "  downloading ${name}"
-    curl -fSL --retry 3 "${AUTH[@]}" "${BASE_URL}/${name}" -o "${dest}"
+    curl -fSL --retry 10 --retry-delay 15 --retry-max-time 900 --retry-all-errors --connect-timeout 30 "${AUTH[@]}" "${BASE_URL}/${name}" -o "${dest}"
   fi
 
   local expected
@@ -293,6 +297,11 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     declare -A APPLE_SLICE=(
       [ios-arm64]=ios-arm64
       [iossimulator-arm64]=ios-arm64-simulator
+      # One universal arm64+x86_64 slice serves both Catalyst RIDs, so each
+      # package carries it whole. .NET resolves one package per RID, so both
+      # ids have to exist even though the payload is identical.
+      [maccatalyst-arm64]=ios-arm64_x86_64-maccatalyst
+      [maccatalyst-x64]=ios-arm64_x86_64-maccatalyst
     )
     for cell in "${CELL_LIST[@]}"; do
       tarball="ffmpeg-${FFMPEG_VERSION}-ios-${cell}.tar.gz"
@@ -352,7 +361,7 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
     echo "==> Packing iOS packages"
     for cell in "${CELL_LIST[@]}"; do
       pc="${PACKAGE_CELL[${cell}]}"
-      for rid in ios-arm64 iossimulator-arm64; do
+      for rid in ios-arm64 iossimulator-arm64 maccatalyst-arm64 maccatalyst-x64; do
         bash "${REPO_ROOT}/scripts/gen-nuspec.sh" ios "${pc}" "${rid}" "${NUGET_VERSION}" "${FFMPEG_VERSION}"
         dotnet pack "${REPO_ROOT}/src/Packaging/Apple.csproj" \
           -p:Cell="${pc}" -p:Rid="${rid}" -p:CellLicense="${CELL_LICENSE[${pc}]}" \

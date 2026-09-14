@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # NuGet trusted publishing (OIDC)
 
 concurrency:
   group: release
@@ -115,10 +116,20 @@ jobs:
       - name: Pack meta packages
         run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase meta
 
-      - name: Verify before publishing
-        run: |
-          bash scripts/verify-packages.sh ./nupkgs
-          bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
+      # Three gates, cheapest first. Structure, then a real restore/build, then
+      # actually loading a library and running ffmpeg. The cross-platform smoke
+      # matrix runs on the PR; this repeats the host leg here so a release can
+      # never publish binaries that do not execute, even on a direct push.
+      - name: Verify package structure
+        run: bash scripts/verify-packages.sh ./nupkgs
+
+      - name: Verify a consumer can restore and build
+        run: bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
+
+      - name: Verify the binaries actually run
+        env:
+          PKG_VERSION: ${{ matrix.version }}
+        run: bash scripts/run-smoke-test.sh linux-x64 ./nupkgs
 
       # A dry run still packs and verifies everything above - the point is to
       # exercise the release path, not to skip it. Only the mutating steps are
@@ -126,7 +137,7 @@ jobs:
       - name: Report what a dry run would publish
         if: inputs.dry_run
         env:
-          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_USER: ${{ secrets.NUGET_USER }}
         run: |
           echo "DRY RUN - nothing will be pushed or tagged."
           echo
@@ -144,16 +155,25 @@ jobs:
           echo
           echo "would tag:    v${{ matrix.version }}"
           echo "would create: release v${{ matrix.version }} from upstream ${{ matrix.upstream }}"
-          if [ -n "${NUGET_KEY}" ]; then
-            echo "NUGET_API_KEY: present"
+          if [ -n "${NUGET_USER}" ]; then
+            echo "NUGET_USER: present (publishing uses OIDC trusted publishing)"
           else
-            echo "NUGET_API_KEY: MISSING - a real run would fail at the push step"
+            echo "NUGET_USER: MISSING - NuGet/login would fail at the push step"
           fi
+
+      # A trusted-publishing key is short-lived, so it is minted immediately
+      # before each push rather than once for the whole job.
+      - name: NuGet login (OIDC)
+        if: ${{ !inputs.dry_run }}
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Push base packages
         if: ${{ !inputs.dry_run }}
         env:
-          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           for f in nupkgs/*.nupkg; do
             case "$(basename "$f")" in
@@ -163,12 +183,24 @@ jobs:
               --source https://api.nuget.org/v3/index.json --skip-duplicate
           done
 
-      # The metas carry exact dependencies on the packages just pushed and
-      # cannot restore until the feed has indexed them.
+      # The metas depend on the payloads by exact version, so a consumer that
+      # resolves one before the feed has indexed them gets an unresolvable
+      # graph. Wait for the feed to actually serve them rather than assuming.
+      - name: Wait for the feed to index the payload packages
+        if: ${{ !inputs.dry_run }}
+        run: bash scripts/wait-for-index.sh "${{ matrix.version }}" ./nupkgs
+
+      - name: NuGet login (OIDC, refreshed after the indexing wait)
+        if: ${{ !inputs.dry_run }}
+        id: login_meta
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push meta packages
         if: ${{ !inputs.dry_run }}
         env:
-          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_KEY: ${{ steps.login_meta.outputs.NUGET_API_KEY }}
         run: |
           for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
             [[ -e "$f" ]] || continue

@@ -32,7 +32,7 @@ for tag in "${TAGS[@]}"; do
   [[ "${APPEND:-0}" == "1" ]] || : > "${out}"
 
   echo "==> ${tag}: fetching SHA256SUMS"
-  curl -fsSL "${base}/SHA256SUMS" -o "${WORK}/SHA256SUMS-${tag}"
+  curl -fsSL --retry 10 --retry-delay 15 --retry-max-time 900 --retry-all-errors --connect-timeout 30 "${base}/SHA256SUMS" -o "${WORK}/SHA256SUMS-${tag}"
 
   total=$(( ${#PLATFORMS[@]} * ${#CELLS[@]} ))
   n=0
@@ -42,7 +42,7 @@ for tag in "${TAGS[@]}"; do
       name="ffmpeg-${ffmpeg_version}-${platform}-${cell}.tar.gz"
       printf '  [%2d/%2d] %-40s' "${n}" "${total}" "${platform}-${cell}"
 
-      if ! curl -fsSL "${base}/${name}" -o "${WORK}/a.tar.gz"; then
+      if ! curl -fsSL --retry 10 --retry-delay 15 --retry-max-time 900 --retry-all-errors --connect-timeout 30 "${base}/${name}" -o "${WORK}/a.tar.gz"; then
         echo "DOWNLOAD FAILED"
         printf '{"artifact":"%s-%s","tag":"%s","issues":[{"kind":"missing-asset","detail":"%s","file":""}]}\n' \
           "${platform}" "${cell}" "${tag}" "${name}" >> "${out}"

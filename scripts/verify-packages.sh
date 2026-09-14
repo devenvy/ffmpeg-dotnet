@@ -57,31 +57,46 @@ for pkg in packages:
         check(not residue, f"{name}: ships build residue: {residue[:3]}")
         check(not any(".xcframework" in n for n in names),
               f"{name}: still ships a merged .xcframework rather than one slice")
-        # The slice directory name is gone after splitting, so "is this the
-        # device or the simulator slice?" can only be answered from the Mach-O
-        # LC_BUILD_VERSION platform. Both slices are arm64; only this differs.
-        want = {"ios-arm64": 2, "iossimulator-arm64": 7}.get(rid)   # iOS, iOS-simulator
+        # The slice directory name is gone after splitting, so "which slice is
+        # this?" can only be answered from the Mach-O LC_BUILD_VERSION platform.
+        # Catalyst ships universal, so fat binaries are walked per architecture.
+        CPU = {0x01000007: "x86_64", 0x0100000C: "arm64"}
+
+        def mach_platforms(data):
+            out = []
+            if len(data) < 8:
+                return out
+            if struct.unpack_from(">I", data, 0)[0] in (0xCAFEBABE, 0xCAFEBABF):
+                for i in range(struct.unpack_from(">I", data, 4)[0]):
+                    cpu, _sub, off = struct.unpack_from(">III", data, 8 + i * 20)[:3]
+                    out += mach_platforms(data[off:])
+                return out
+            if struct.unpack_from("<I", data, 0)[0] not in (0xFEEDFACF, 0xCFFAEDFE):
+                return out
+            ncmds = struct.unpack_from("<I", data, 16)[0]
+            off = 32
+            for _ in range(min(ncmds, 4096)):
+                cmd, sz = struct.unpack_from("<II", data, off)
+                if sz == 0:
+                    break
+                if cmd == 0x32:          # LC_BUILD_VERSION
+                    return [struct.unpack_from("<I", data, off + 8)[0]]
+                off += sz
+            return out
+
+        want = {"ios-arm64": 2, "iossimulator-arm64": 7,
+                "maccatalyst-arm64": 6, "maccatalyst-x64": 6}.get(rid)
         if want:
             binaries = [n for n in names
                         if n.startswith("frameworks/") and "." not in n.rsplit("/", 1)[-1]]
             checked = 0
             for b in binaries[:3]:
-                data = z.read(b)
-                if len(data) < 32 or struct.unpack_from("<I", data, 0)[0] not in (0xFEEDFACF, 0xCFFAEDFE):
+                got = mach_platforms(z.read(b))
+                if not got:
                     continue
-                ncmds = struct.unpack_from("<I", data, 16)[0]
-                off, plat = 32, None
-                for _ in range(min(ncmds, 4096)):
-                    cmd, sz = struct.unpack_from("<II", data, off)
-                    if sz == 0:
-                        break
-                    if cmd == 0x32:      # LC_BUILD_VERSION
-                        plat = struct.unpack_from("<I", data, off + 8)[0]
-                        break
-                    off += sz
                 checked += 1
-                check(plat == want,
-                      f"{name}: {b} has Mach-O platform {plat}, expected {want} for {rid}")
+                check(all(g == want for g in got),
+                      f"{name}: {b} has Mach-O platform(s) {got}, expected {want} for {rid}")
             check(checked > 0, f"{name}: found no Mach-O binary to verify the slice platform")
         fw = {n.split("/")[1] for n in names if n.startswith("frameworks/") and n.count("/") > 1}
         check(len(fw) >= 6, f"{name}: only {len(fw)} frameworks, expected at least 6")

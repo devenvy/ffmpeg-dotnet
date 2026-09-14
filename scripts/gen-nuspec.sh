@@ -36,7 +36,7 @@ declare -A SPDX=(
 # the iOS payload, so it is named like its siblings.
 ALL_RIDS=(win-x64 win-arm64 linux-x64 linux-arm64 linux-arm linux-musl-x64
           linux-musl-arm64 osx-x64 osx-arm64 android-arm64 android-x64
-          ios-arm64 iossimulator-arm64)
+          ios-arm64 iossimulator-arm64 maccatalyst-arm64 maccatalyst-x64)
 
 case "${KIND}" in
 
