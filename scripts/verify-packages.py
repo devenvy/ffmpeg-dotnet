@@ -146,17 +146,45 @@ for pkg in packages:
     print(f"  {name}  ({size:.1f} MB, {len(payload)} payload file(s))")
 
 # Every packed platform must be reachable through its variant's .All, or a
-# RID-less consumer silently loses one. Derived from the ids actually present,
-# so adding a platform cannot leave .All stale and a hardcoded count cannot
-# fail a correct build.
+# RID-less consumer silently loses one.
+#
+# The comparison is against gen-nuspec.sh's canonical RID list, not against
+# whatever happens to sit in the directory. CI packs a handful of representative
+# RIDs on purpose, so "listed but not packed" is the normal case there and
+# asserting the two sets match fails every correct CI run. Reading the canonical
+# list instead keeps the check meaningful on a subset feed and makes it stricter
+# on a full one: a .All that drifts from the shipped platform set is caught even
+# when the drift happens to agree with what was packed.
+gen = (pathlib.Path(__file__).parent / "gen-nuspec.sh").read_text(encoding="utf-8")
+canonical = set(re.search(r"ALL_RIDS=\((.*?)\)", gen, re.S).group(1).split())
+if not canonical:
+    failures.append("could not parse ALL_RIDS out of gen-nuspec.sh")
+
+# --expect-complete is passed by the release workflow, where a short feed means
+# a platform silently failed to pack rather than a deliberate subset.
+expect_complete = "--expect-complete" in sys.argv[2:]
+
 for meta_id, listed in all_metas.items():
     variant = meta_id.split(".")[-3]
     prefix = f"DevEnvy.FFmpeg.Binaries.{variant}.Runtime."
-    packed = {i for i in all_ids if i.startswith(prefix) and i != meta_id}
-    missing = packed - set(listed)
-    extra = set(listed) - packed
-    check(not missing and not extra,
-          f"{meta_id}: missing from .All: {sorted(missing)}; listed but not packed: {sorted(extra)}")
+    listed_rids = {d[len(prefix):] for d in listed if d.startswith(prefix)}
+    packed = {i[len(prefix):] for i in all_ids if i.startswith(prefix) and i != meta_id}
+
+    drift = listed_rids ^ canonical
+    check(not drift,
+          f"{meta_id}: .All dependencies do not match gen-nuspec.sh ALL_RIDS: "
+          f"missing {sorted(canonical - listed_rids)}, unexpected {sorted(listed_rids - canonical)}")
+
+    orphaned = packed - listed_rids
+    check(not orphaned,
+          f"{meta_id}: packed but unreachable through .All: {sorted(orphaned)}")
+
+    if expect_complete:
+        check(not (canonical - packed),
+              f"{meta_id}: release feed is missing platforms: {sorted(canonical - packed)}")
+    elif canonical - packed:
+        print(f"  note: {variant} feed is a subset, "
+              f"{len(packed)}/{len(canonical)} platforms packed")
 
 print()
 if failures:

@@ -120,8 +120,12 @@ jobs:
       # actually loading a library and running ffmpeg. The cross-platform smoke
       # matrix runs on the PR; this repeats the host leg here so a release can
       # never publish binaries that do not execute, even on a direct push.
+      # --expect-complete: on a release the feed must hold every shipped
+      # platform. A short feed here means a platform failed to pack, not that a
+      # subset was asked for, and publishing it would leave .All pointing at
+      # package versions that do not exist.
       - name: Verify package structure
-        run: bash scripts/verify-packages.sh ./nupkgs
+        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
 
       - name: Verify a consumer can restore and build
         run: bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
