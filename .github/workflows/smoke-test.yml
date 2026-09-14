@@ -272,25 +272,26 @@ jobs:
       - name: Select the newest installed Xcode
         run: |
           set -euo pipefail
-          # Pick by what the candidate actually contains, not by name. The
-          # image carries both Xcode_26.6.app and an Xcode_26.6.0.app that has
-          # no MacOSX SDK inside it, and a version sort ranks the broken one
-          # last, so selecting the highest-numbered directory got a toolchain
-          # whose clang could not be found at all.
-          # A plain glob orders lexically, which would rank a future 26.10
-          # below 26.6, so the validated candidates are version-sorted.
+          # Probe each candidate with the operation that actually fails rather
+          # than inferring from the directory tree: the image carries several
+          # Xcodes whose MacOSX.sdk directory is present but whose toolchain
+          # xcrun cannot resolve, so testing for the directory selected one of
+          # those and left the build to die deep in clang instead. Sort by the
+          # version Xcode reports, not by directory name, which orders
+          # lexically and would rank a future 26.10 below 26.6.
           usable="$(mktemp)"
           for candidate in /Applications/Xcode*.app; do
-            sdk="${candidate}/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
-            if [ -d "${sdk}" ]; then
-              echo "  usable:   ${candidate}"
-              echo "${candidate}" >> "${usable}"
+            dev="${candidate}/Contents/Developer"
+            if [ -d "${dev}" ] && DEVELOPER_DIR="${dev}" xcrun --sdk macosx --find clang >/dev/null 2>&1; then
+              version="$(DEVELOPER_DIR="${dev}" xcodebuild -version 2>/dev/null | head -1 | cut -d" " -f2)"
+              echo "  usable: ${candidate} (Xcode ${version})"
+              echo "${version} ${candidate}" >> "${usable}"
             else
-              echo "  no SDK:   ${candidate}"
+              echo "  broken: ${candidate}"
             fi
           done
-          newest="$(sort -V "${usable}" | tail -1)"
-          test -n "${newest}" || { echo "FAIL: no installed Xcode has a MacOSX SDK"; exit 1; }
+          newest="$(sort -V "${usable}" | tail -1 | cut -d" " -f2)"
+          test -n "${newest}" || { echo "FAIL: no installed Xcode has a working macosx toolchain"; exit 1; }
           sudo xcode-select -s "${newest}/Contents/Developer"
           xcodebuild -version
 
