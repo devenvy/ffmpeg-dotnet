@@ -4,6 +4,12 @@
 * text=auto eol=lf
 
 ###############################################################################
+# Shell scripts must keep LF in the working tree on every platform: a CRLF
+# shebang line makes bash fail with 'set: pipefail: invalid option name'.
+###############################################################################
+*.sh text eol=lf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

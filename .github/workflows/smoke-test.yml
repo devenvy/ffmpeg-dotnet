@@ -1,0 +1,396 @@
+name: Smoke test
+
+# Proves the shipped binaries actually load and run on each platform, rather
+# than merely being present in the package. Package contents are checked by
+# verify-packages.sh; this checks that a real .NET app can use them.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CELL: lgplv2
+  PKG_CELL: LGPLv2
+  PKG_VERSION: 0.0.0-ci
+
+jobs:
+  # Every job below is a cross product of platform and tracked series, built
+  # here rather than declared per job. A matrix cannot express that with
+  # `include`: a second include entry carrying the same keys cannot merge into
+  # combinations the first already filled, so GitHub emits it as a standalone
+  # entry with no series attached and those jobs silently test nothing.
+  # Generating the combinations also means adding a series to versions.json
+  # extends the whole matrix with no edit here.
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      pack_matrix: ${{ steps.m.outputs.pack_matrix }}
+      meta_matrix: ${{ steps.m.outputs.meta_matrix }}
+      native_matrix: ${{ steps.m.outputs.native_matrix }}
+      musl_matrix: ${{ steps.m.outputs.musl_matrix }}
+      armhf_matrix: ${{ steps.m.outputs.armhf_matrix }}
+      android_matrix: ${{ steps.m.outputs.android_matrix }}
+      catalyst_matrix: ${{ steps.m.outputs.catalyst_matrix }}
+      ios_matrix: ${{ steps.m.outputs.ios_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: |
+          set -euo pipefail
+          python3 - versions.json >> "$GITHUB_OUTPUT" <<'GENEOF'
+          import json, sys
+
+          ARTIFACTS = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-armhf",
+                       "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64",
+                       "android-arm64", "android-x64", "ios"]
+          NATIVE = [("win-x64", "windows-latest"), ("win-arm64", "windows-11-arm"),
+                    ("linux-x64", "ubuntu-latest"), ("linux-arm64", "ubuntu-24.04-arm"),
+                    ("osx-x64", "macos-15-intel"), ("osx-arm64", "macos-latest")]
+          MUSL = [("linux-musl-x64", "ubuntu-latest"), ("linux-musl-arm64", "ubuntu-24.04-arm")]
+          ANDROID = [("android-arm64", "arm64", "arm64-v8a"), ("android-x64", "x64", "x86_64")]
+          CATALYST = ["maccatalyst-arm64", "maccatalyst-x64"]
+
+          series = json.load(open(sys.argv[1]))["series"]
+          def inc(rows): return json.dumps({"include": rows}, separators=(",", ":"))
+
+          out = {
+            "pack":     inc([{"series": s, "tag": t, "artifact": a} for s, t in series.items() for a in ARTIFACTS]),
+            "meta":     inc([{"series": s, "tag": t} for s, t in series.items()]),
+            "native":   inc([{"series": s, "rid": r, "os": o} for s in series for r, o in NATIVE]),
+            "musl":     inc([{"series": s, "rid": r, "os": o} for s in series for r, o in MUSL]),
+            "armhf":    inc([{"series": s} for s in series]),
+            "android":  inc([{"series": s, "rid": r, "abi": ab, "jni": j} for s in series for r, ab, j in ANDROID]),
+            "catalyst": inc([{"series": s, "rid": r} for s in series for r in CATALYST]),
+            "ios":      inc([{"series": s} for s in series]),
+          }
+          for k, v in out.items():
+              print(k + "_matrix=" + v)
+          GENEOF
+          echo "generated matrices:"
+          cut -d= -f1 "$GITHUB_OUTPUT" | sed 's/^/  /'
+
+  pack:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.pack_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Pack ${{ matrix.artifact }}
+        run: |
+          if [[ "${{ matrix.artifact }}" == "ios" ]]; then
+            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
+          else
+            RIDS="${{ matrix.artifact }}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-${{ matrix.artifact }}
+          path: out/*.nupkg
+          retention-days: 1
+
+  pack-meta:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.meta_matrix) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: CELLS="$CELL" bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase meta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: out/*.nupkg
+          retention-days: 1
+
+  # Native hosted runners: the binary under test is executed on the hardware and
+  # libc it was built for.
+  native:
+    needs: [resolve, pack, pack-meta]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.native_matrix) }}
+    name: ${{ matrix.rid }} (${{ matrix.series }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+      - name: Smoke test
+        shell: bash
+        run: bash scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+
+  # musl has no dedicated runner, but an Alpine container on the matching
+  # architecture runs natively - this is containerization, not emulation.
+  musl:
+    needs: [resolve, pack, pack-meta]
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.musl_matrix) }}
+    name: ${{ matrix.rid }} (${{ matrix.series }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+      # Not `container:` - actions/checkout needs Node, which the Alpine SDK
+      # image does not ship. Running docker explicitly keeps the checkout and
+      # artifact steps on the host.
+      - name: Smoke test in Alpine
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+
+  # 32-bit ARM is the one RID with no hosted runner, native or containerized.
+  armhf:
+    needs: [resolve, pack, pack-meta]
+    name: linux-arm qemu (${{ matrix.series }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.armhf_matrix) }}
+    runs-on: ubuntu-24.04-arm
+    # linux-arm is the only RID with no native runner, and GitHub's arm64 hosts
+    # have no 32-bit EL0, so armv7 always runs under emulation here.
+    #
+    # An emulated *SDK build* took six hours. So the SDK work happens natively
+    # and only the finished app is emulated: publish self-contained for
+    # linux-arm on the arm64 host, then execute it in a runtime-deps container,
+    # which needs no SDK. That turns hours of emulated compilation into about a
+    # second of emulated execution.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-linux-armhf
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+
+      - name: Publish the smoke test for linux-arm (native, not emulated)
+        run: bash scripts/publish-smoke-test.sh linux-arm ./feed ./armhf-app
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Run it under linux/arm/v7
+        run: |
+          docker run --rm --platform linux/arm/v7             -v "$PWD/armhf-app:/app" -w /app             mcr.microsoft.com/dotnet/runtime-deps:10.0             ./SmokeTest
+
+  # Android and iOS cannot run the console smoke test, so these assert the thing
+  # that is actually unproven: that the platform SDK picks the payload up and
+  # embeds it in the app. A .so that reaches lib/<abi>/ inside the APK is one the
+  # runtime linker will find; a framework inside the .app bundle is one the
+  # dynamic loader will find.
+  android:
+    needs: [resolve, pack, pack-meta]
+    timeout-minutes: 30
+    name: android-${{ matrix.abi }} (${{ matrix.series }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.android_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-${{ matrix.rid }}
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+
+      - run: dotnet workload install android --skip-sign-check
+
+      - name: Build an Android head and inspect the APK
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh android "$PWD/feed" "${{ matrix.rid }}"
+          cd .mobile/android
+          dotnet build -c Release -f net10.0-android -r ${{ matrix.rid }} \
+            -p:AndroidPackageFormat=apk
+
+          apk=$(find . -name '*-Signed.apk' -o -name '*.apk' | head -1)
+          echo "APK: ${apk}"
+          unzip -l "${apk}" | grep -E "lib/${{ matrix.jni }}/" | sed 's/^/  /'
+
+          for lib in libavcodec.so libavutil.so libc++_shared.so; do
+            unzip -l "${apk}" | grep -q "lib/${{ matrix.jni }}/${lib}" \
+              || { echo "FAIL: ${lib} missing from lib/${{ matrix.jni }}/ in the APK"; exit 1; }
+          done
+          echo "PASS: FFmpeg libraries and libc++_shared are packed into the APK"
+
+  maccatalyst:
+    needs: [resolve, pack, pack-meta]
+    timeout-minutes: 30
+    name: ${{ matrix.rid }} (${{ matrix.series }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.catalyst_matrix) }}
+    # Pinned rather than macos-latest, which moved from macOS 15 (default Xcode
+    # 16.4) to macOS 26 partway through these runs, so identical revisions of
+    # this file saw different toolchains.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-ios
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+
+      # The image ships several Xcodes and its default is not always the
+      # newest; the Catalyst pack refuses to build against one older than it
+      # requires. Select the newest installed rather than pinning a version
+      # that image updates would invalidate.
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          # Choose without running anything. Probing candidates with xcrun
+          # was itself the failure: it raised SIGABRT on Xcode 26.6, and a
+          # signal death is not an exit status any guard can absorb, so the
+          # step died mid-loop instead of moving on. Selection needs no
+          # subprocess - the directory name carries the version.
+          #
+          # Symlinks are skipped because the image publishes every Xcode
+          # twice, canonical plus a patch alias (Xcode_26.6.0.app links to
+          # Xcode_26.6.app), and Apple tooling misbehaves when DEVELOPER_DIR
+          # names the alias. Version-sort rather than relying on glob order,
+          # which is lexical and would rank a future 26.10 below 26.6.
+          usable="$(mktemp)"
+          for candidate in /Applications/Xcode*.app; do
+            if [ -L "${candidate}" ]; then
+              echo "  alias:     ${candidate}"
+            elif [ -d "${candidate}/Contents/Developer" ]; then
+              echo "  candidate: ${candidate}"
+              echo "${candidate}" >> "${usable}"
+            else
+              echo "  no dev:    ${candidate}"
+            fi
+          done
+          newest="$(sort -V "${usable}" | tail -1)"
+          test -n "${newest}" || { echo "FAIL: no usable Xcode found"; exit 1; }
+          sudo xcode-select -s "${newest}/Contents/Developer"
+          xcodebuild -version
+
+      - run: dotnet workload install maccatalyst --skip-sign-check
+
+      - name: Build a Catalyst head and inspect the app bundle
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh maccatalyst "$PWD/feed" "${{ matrix.rid }}"
+          cd .mobile/maccatalyst
+          dotnet build -c Release -f net10.0-maccatalyst -r "${{ matrix.rid }}"
+
+          # Under bin/ specifically: obj/ holds a codesign staging copy of the
+          # bundle whose framework directories exist but are not yet populated,
+          # and find walks into it first, so inspecting it reported an empty
+          # Frameworks/ for a build that embedded everything correctly.
+          app="$(find bin -name '*.app' -type d -print -quit)"
+          test -n "${app}" || { echo "FAIL: no .app bundle was produced"; exit 1; }
+          echo "App bundle: ${app}"
+          find "${app}" -maxdepth 3 -name '*.framework' -exec basename {} \; | sort | sed 's/^/  /'
+
+          for fw in libavcodec libavutil libavformat; do
+            embedded="$(find "${app}" -type f -name "${fw}" -path '*.framework/*' -print -quit)"
+            test -n "${embedded}" || { echo "FAIL: ${fw}.framework not embedded"; exit 1; }
+          done
+          echo "PASS: Catalyst frameworks resolved through NativeReference and embedded"
+
+  ios:
+    needs: [resolve, pack, pack-meta]
+    timeout-minutes: 30
+    name: ios (${{ matrix.series }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.ios_matrix) }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.series }}-ios
+          path: feed
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-meta-${{ matrix.series }}
+          path: feed
+
+      - run: dotnet workload install ios --skip-sign-check
+
+      - name: Build an iOS head and inspect the app bundle
+        run: |
+          set -euo pipefail
+          bash scripts/new-mobile-test.sh ios "$PWD/feed" iossimulator-arm64
+          cd .mobile/ios
+          dotnet build -c Release -f net10.0-ios -r iossimulator-arm64
+
+          # Under bin/ specifically: obj/ holds a codesign staging copy of the
+          # bundle whose framework directories exist but are not yet populated,
+          # and find walks into it first, so inspecting it reported an empty
+          # Frameworks/ for a build that embedded everything correctly.
+          app="$(find bin -name '*.app' -type d -print -quit)"
+          test -n "${app}" || { echo "FAIL: no .app bundle was produced"; exit 1; }
+          echo "App bundle: ${app}"
+          find "${app}/Frameworks" -maxdepth 1 -mindepth 1 -exec basename {} \; | sed 's/^/  /'
+
+          for fw in libavcodec libavutil libavformat; do
+            test -e "${app}/Frameworks/${fw}.framework/${fw}" \
+              || { echo "FAIL: ${fw}.framework not embedded in the app bundle"; exit 1; }
+          done
+          echo "PASS: xcframeworks resolved through NativeReference and embedded"
+
+          # The simulator slice must be the one embedded, not the device slice.
+          file "${app}/Frameworks/libavcodec.framework/libavcodec" | sed 's/^/  /'

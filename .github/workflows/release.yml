@@ -1,58 +1,328 @@
 name: Release
 
-permissions:
-  contents: read
-
+# Not triggered by a tag: this workflow CREATES the release tag, and a workflow
+# cannot be started by a tag it pushes itself. It runs on a merge to main that
+# touches the version manifest or the packaging, and can be run by hand.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths:
+      - versions.json
+      - src/**
+      - scripts/**
+  workflow_dispatch:
+    inputs:
+      series:
+        description: "Series to release (e.g. 9.0). Empty releases every series whose version is not yet tagged."
+        required: false
+        type: string
+      force_rebuild:
+        description: "Re-release an upstream build that has already shipped, as a packaging-only rebuild (our_build + 1)."
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Pack and verify everything, then report what WOULD be pushed and tagged. Publishes nothing."
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write   # NuGet trusted publishing (OIDC)
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
+  plan:
+    name: Plan releases
+    runs-on: ubuntu-24.04
     outputs:
-      ffmpeg_version: ${{ steps.v.outputs.ffmpeg_version }}
-      package_version: ${{ steps.v.outputs.package_version }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
     steps:
       - uses: actions/checkout@v4
-      - id: v
+        with:
+          fetch-depth: 0
+
+      # Idempotent by design: a series is released when its computed version has
+      # no v* tag yet. Re-running after a partial failure resumes rather than
+      # duplicating, and a no-op merge releases nothing.
+      - id: plan
+        env:
+          FORCE: ${{ inputs.force_rebuild && '1' || '' }}
+          # Through the environment rather than interpolated into the script:
+          # a quote in the dispatch input would otherwise land in the middle
+          # of a bash condition and break parsing.
+          ONLY_SERIES: ${{ inputs.series }}
         run: |
-          echo "ffmpeg_version=$(tr -d '[:space:]' < FFMPEG_VERSION)" >> "$GITHUB_OUTPUT"
-          echo "package_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          entries=()
+          if [ -n "${FORCE}" ] && [ -z "${ONLY_SERIES}" ]; then
+            echo "::error::force_rebuild requires an explicit series. Rebuilding every"
+            echo "::error::tracked series at once would burn a version number for each."
+            exit 1
+          fi
 
-  build:
-    needs: resolve
-    uses: ./.github/workflows/build.yml
-    with:
-      ffmpeg_version: ${{ needs.resolve.outputs.ffmpeg_version }}
-      package_version: ${{ needs.resolve.outputs.package_version }}
+          # A requested series that matches nothing would otherwise fall
+          # through the loop and report a successful release of nothing, so a
+          # typo in the dispatch input looks like a no-op rather than an error.
+          if [ -n "${ONLY_SERIES}" ]; then
+            jq -e --arg s "${ONLY_SERIES}" '.series | has($s)' versions.json >/dev/null || {
+              echo "::error::series ${ONLY_SERIES} is not tracked in versions.json."
+              echo "::error::Tracked: $(jq -r '.series | keys | join(", ")' versions.json)"
+              exit 1
+            }
+          fi
 
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+          # read rather than word-splitting $(jq ...): a series key is data,
+          # and IFS splitting would mangle one containing whitespace.
+          while IFS= read -r series; do
+            if [ -n "${ONLY_SERIES}" ] && [ "${series}" != "${ONLY_SERIES}" ]; then
+              continue
+            fi
+            tag="$(jq -r --arg s "${series}" '.series[$s]' versions.json)"
+
+            # compute-version.sh exits 3 when this upstream build has already
+            # shipped. That is the real idempotency check: it cannot be done by
+            # asking whether the computed version is tagged, because the script
+            # always returns an untagged version by construction.
+            set +e
+            version=$(bash scripts/compute-version.sh "$tag" ${FORCE:+--force-rebuild} 2>/tmp/cv.err)
+            rc=$?
+            set -e
+            case "${rc}" in
+              0) echo "${series}: will release ${version} from upstream ${tag}" ;;
+              3) echo "${series}: upstream ${tag} already released, skipping"; continue ;;
+              *) echo "::error::compute-version failed for ${series} (${tag}), exit ${rc}"
+                 cat /tmp/cv.err >&2
+                 exit "${rc}" ;;
+            esac
+            # Built by jq, not string concatenation: a stray quote in any of
+            # these would otherwise emit malformed JSON that fails later, in
+            # fromJson, with no indication of which value caused it.
+            entries+=("$(jq -cn --arg s "${series}" --arg u "${tag}" --arg v "${version}" '{series: $s, upstream: $u, version: $v}')")
+          done < <(jq -r '.series | keys[]' versions.json)
+
+          # Each entry is already a jq-produced object, so joining them with
+          # commas cannot malform the result; jq -e then refuses to emit
+          # anything that is not valid JSON.
+          matrix="{\"include\":[$(IFS=,; echo "${entries[*]+${entries[*]}}")]}"
+          echo "${matrix}" | jq -e . >/dev/null || {
+            echo "::error::planner produced invalid matrix JSON: ${matrix}"
+            exit 1
+          }
+          if [ "${#entries[@]}" -eq 0 ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "plan: ${matrix}"
+
+  release:
+    name: Release ${{ matrix.version }}
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: nuget
-          path: out
+      - name: Pack base packages
+        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase base
 
+      - name: Pack meta packages
+        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase meta
+
+      # Three gates, cheapest first. Structure, then a real restore/build, then
+      # actually loading a library and running ffmpeg. The cross-platform smoke
+      # matrix runs on the PR; this repeats the host leg here so a release can
+      # never publish binaries that do not execute, even on a direct push.
+      # --expect-complete: on a release the feed must hold every shipped
+      # platform. A short feed here means a platform failed to pack, not that a
+      # subset was asked for, and publishing it would leave .All pointing at
+      # package versions that do not exist.
+      - name: Verify package structure
+        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
+
+      - name: Verify a consumer can restore and build
+        run: bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
+
+      - name: Verify the binaries actually run
+        env:
+          PKG_VERSION: ${{ matrix.version }}
+        run: bash scripts/run-smoke-test.sh linux-x64 ./nupkgs
+
+      # A dry run still packs and verifies everything above - the point is to
+      # exercise the release path, not to skip it. Only the mutating steps are
+      # gated, so the first real release is not also the first execution.
+      - name: Report what a dry run would publish
+        if: inputs.dry_run
+        env:
+          NUGET_USER: ${{ secrets.NUGET_USER }}
+        run: |
+          echo "DRY RUN - nothing will be pushed or tagged."
+          echo
+          echo "would push, in this order:"
+          echo "  phase 1 (payloads + helper):"
+          for f in nupkgs/*.nupkg; do
+            case "$(basename "$f")" in *.Runtime.All.[0-9]*) continue ;; esac
+            echo "    $(basename "$f")  [$(du -h "$f" | cut -f1)]"
+          done
+          echo "  phase 2 (metas, after the feed indexes phase 1):"
+          for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
+            [ -e "$f" ] || continue
+            echo "    $(basename "$f")"
+          done
+          echo
+          echo "would tag:    v${{ matrix.version }}"
+          echo "would create: release v${{ matrix.version }} from upstream ${{ matrix.upstream }}"
+          if [ -n "${NUGET_USER}" ]; then
+            echo "NUGET_USER: present (publishing uses OIDC trusted publishing)"
+          else
+            echo "NUGET_USER: MISSING - NuGet/login would fail at the push step"
+          fi
+
+      # A trusted-publishing key is short-lived, so it is minted immediately
+      # before each push rather than once for the whole job.
       - name: NuGet login (OIDC)
-        uses: NuGet/login@v1
+        if: ${{ !inputs.dry_run }}
         id: login
+        uses: NuGet/login@v1
         with:
           user: ${{ secrets.NUGET_USER }}
 
-      - name: NuGet push
-        run: dotnet nuget push "out/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Push base packages
+        if: ${{ !inputs.dry_run }}
+        env:
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          # nuget.org push gets no retry otherwise, unlike the download path
+          # in pack.sh. One flaky upload partway through aborts the job and
+          # costs a whole pack-and-verify cycle to resume, so each push is
+          # attempted a few times with backoff. --skip-duplicate keeps a retry
+          # after a push that actually succeeded harmless.
+          push() {
+            local file="$1" attempt=1
+            while :; do
+              if dotnet nuget push "${file}" --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 4 ]; then
+                echo "::error::giving up on $(basename "${file}") after ${attempt} attempts"
+                return 1
+              fi
+              echo "push failed for $(basename "${file}"), retry ${attempt} in $(( attempt * 15 ))s"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+
+          for f in nupkgs/*.nupkg; do
+            case "$(basename "$f")" in
+              *.Runtime.All.[0-9]*) continue ;;   # metas go in the second pass
+            esac
+            push "$f"
+          done
+
+      # The metas depend on the payloads by exact version, so a consumer that
+      # resolves one before the feed has indexed them gets an unresolvable
+      # graph. Wait for the feed to actually serve them rather than assuming.
+      - name: Wait for the feed to index the payload packages
+        if: ${{ !inputs.dry_run }}
+        run: bash scripts/wait-for-index.sh "${{ matrix.version }}" ./nupkgs
+
+      - name: NuGet login (OIDC, refreshed after the indexing wait)
+        if: ${{ !inputs.dry_run }}
+        id: login_meta
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push meta packages
+        if: ${{ !inputs.dry_run }}
+        env:
+          NUGET_KEY: ${{ steps.login_meta.outputs.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          # nuget.org push gets no retry otherwise, unlike the download path
+          # in pack.sh. One flaky upload partway through aborts the job and
+          # costs a whole pack-and-verify cycle to resume, so each push is
+          # attempted a few times with backoff. --skip-duplicate keeps a retry
+          # after a push that actually succeeded harmless.
+          push() {
+            local file="$1" attempt=1
+            while :; do
+              if dotnet nuget push "${file}" --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 4 ]; then
+                echo "::error::giving up on $(basename "${file}") after ${attempt} attempts"
+                return 1
+              fi
+              echo "push failed for $(basename "${file}"), retry ${attempt} in $(( attempt * 15 ))s"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+
+          for f in nupkgs/*.Runtime.All.[0-9]*.nupkg; do
+            [ -e "$f" ] || continue
+            push "$f"
+          done
+
+      # Finalization has to be resumable. Everything above it is already
+      # published and cannot be withdrawn, so a failure here must be fixable
+      # by re-running rather than leaving packages live with no tag and no
+      # release. Each action is conditional on its own absence: a re-run that
+      # finds the tag pushed moves on to the release, and one that finds both
+      # simply succeeds.
+      - name: Tag and create release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ matrix.version }}
+          UPSTREAM: ${{ matrix.upstream }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            # A tag left by a partial earlier attempt must not be assumed to
+            # name this commit: pushing one that points elsewhere would
+            # mislabel which source produced the published packages.
+            at="$(git rev-parse "refs/tags/${tag}")"
+            if [ "${at}" != "${GITHUB_SHA}" ]; then
+              echo "::error::${tag} already exists at ${at}, not ${GITHUB_SHA}."
+              echo "::error::Refusing to move a release tag."
+              exit 1
+            fi
+            echo "${tag} already exists at this commit"
+          else
+            git tag "${tag}"
+          fi
+
+          if git ls-remote --exit-code --tags origin "${tag}" >/dev/null 2>&1; then
+            echo "${tag} already on origin"
+          else
+            git push origin "${tag}"
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} already exists"
+          else
+            gh release create "${tag}" --title "${tag}" --notes "FFmpeg ${UPSTREAM} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${UPSTREAM})."
+          fi
