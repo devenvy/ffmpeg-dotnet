@@ -163,11 +163,14 @@ Because 9.0's versions sort above 8.1's, a floating reference always lands on th
 series. To track 8.1 and keep receiving its updates, use a range:
 
 ```xml
-<PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.linux-x64" Version="[8.1,9.0)" />
+<PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.linux-x64" Version="8.1.*" />
 ```
 
-That picks up every 8.1 release and never crosses to 9.0. Pin an exact version
-(`[8.1.2.500]`) if you want no movement at all.
+A floating `8.1.*` resolves to the newest 8.1 release and never crosses to 9.0.
+
+Do **not** use a range like `[8.1,9.0)` for this: `PackageReference` resolves the
+*lowest* version a range allows, so it would pin you to the first 8.1 release and never
+move. Use an exact version (`[8.1.2.500]`) only when you want no movement at all.
 
 ## Migrating from `DevEnvy.FFmpeg.Binaries.LGPL`
 

@@ -56,7 +56,7 @@ case "${KIND}" in
       <_DevEnvyFFmpegTool Include="\$(OutDir)**/ffmpeg;\$(OutDir)**/ffprobe" />
       <_DevEnvyFFmpegTool Include="\$(PublishDir)**/ffmpeg;\$(PublishDir)**/ffprobe" Condition="'\$(PublishDir)' != ''" />
     </ItemGroup>
-    <Exec Command="chmod +x %(_DevEnvyFFmpegTool.FullPath)"
+    <Exec Command="chmod +x &quot;%(_DevEnvyFFmpegTool.FullPath)&quot;"
           Condition="'@(_DevEnvyFFmpegTool)' != ''"
           ContinueOnError="true" />
   </Target>
@@ -78,7 +78,10 @@ TARGETSEOF
     {
       echo '<?xml version="1.0" encoding="utf-8"?>'
       echo '<Project>'
-      echo "  <ItemGroup Condition=\"'\$(TargetPlatformIdentifier)' == '${PLATFORM}'\">"
+      # Also gated on the RID: Runtime.All depends on every Apple package, and
+      # without this an iOS build would import the device and simulator
+      # frameworks together under the same six names.
+      echo "  <ItemGroup Condition=\"'\$(TargetPlatformIdentifier)' == '${PLATFORM}' AND '\$(RuntimeIdentifier)' == '${RID}'\">"
       for fw in "${STAGING}"/*.framework; do
         [[ -d "${fw}" ]] || continue
         echo "    <NativeReference Include=\"\$(MSBuildThisFileDirectory)../frameworks/$(basename "${fw}")\" Kind=\"Framework\" />"

@@ -46,21 +46,41 @@ jobs:
             # substitution: ${series//./\.} does not actually escape the dots,
             # leaving separators as wildcards that can match another series.
             latest=$(echo "${UPSTREAM}" \
-              | awk -F. -v s="${series}" 'NF == 4 && $1 "." $2 == s' \
+              | awk -F. -v s="${series}" 'NF == 4 && $1 "." $2 == s && $0 ~ /^[0-9.]+$/' \
               | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n \
               | tail -1 || true)
 
-            if [[ -z "${latest}" || "${latest}" == "${current}" ]]; then
+            if [[ -z "${latest}" ]]; then
+              echo "::warning::${series}: no upstream release matched - listing may be truncated"
+              continue
+            fi
+            if [[ "${latest}" == "${current}" ]]; then
               echo "${series}: up to date (${current})"
+              continue
+            fi
+            # Only ever move forward. A truncated or stale listing could
+            # otherwise open a PR that walks a series backwards.
+            newest=$(echo "${current} ${latest}" | tr ' ' '\n' \
+              | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1)
+            if [[ "${newest}" != "${latest}" ]]; then
+              echo "::warning::${series}: upstream ${latest} is older than tracked ${current}, refusing to downgrade"
               continue
             fi
 
             echo "${series}: ${current} -> ${latest}"
             branch="auto/ffmpeg-${latest}"
 
-            if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
-              echo "  branch ${branch} already exists, skipping"
+            open_prs=$(gh pr list --head "${branch}" --state open --json number --jq 'length')
+            if [[ "${open_prs}" != "0" ]]; then
+              echo "  PR for ${branch} already open, skipping"
               continue
+            fi
+            if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+              # A branch with no open PR is left over from a run that pushed and
+              # then failed or was cancelled before creating the PR. Reuse it
+              # rather than skipping forever.
+              echo "  reusing orphaned branch ${branch}"
+              git push origin --delete "${branch}" || true
             fi
 
             git checkout -B "${branch}" "origin/${GITHUB_REF_NAME}"

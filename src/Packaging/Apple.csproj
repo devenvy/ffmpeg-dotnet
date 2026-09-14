@@ -12,6 +12,9 @@
     <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.$(Rid)</PackageId>
     <Description>FFmpeg $(FFmpegVersion) $(Cell) frameworks for $(Rid). Referenced by DevEnvy.FFmpeg.Binaries.$(Cell).</Description>
     <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
+    <!-- Without this, Authors defaults to the project name and the gallery
+         permanently shows "Runtime" / "Apple" as the package author. -->
+    <Authors>DevEnvy</Authors>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>

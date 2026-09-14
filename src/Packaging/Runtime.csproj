@@ -13,6 +13,9 @@
     <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.$(Rid)</PackageId>
     <Description>FFmpeg $(FFmpegVersion) $(Cell) native binaries for $(Rid). Reference this directly when your build targets $(Rid), or DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.All when it sets no RuntimeIdentifier.</Description>
     <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
+    <!-- Without this, Authors defaults to the project name and the gallery
+         permanently shows "Runtime" / "Apple" as the package author. -->
+    <Authors>DevEnvy</Authors>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>

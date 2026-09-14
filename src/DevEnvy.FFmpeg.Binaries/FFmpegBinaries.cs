@@ -64,6 +64,18 @@ namespace DevEnvy.FFmpeg.Binaries
                 return true;
             }
 
+            // Apple platforms do not use runtimes/{rid}/native at all: the
+            // packages ship .framework bundles that the SDK embeds under
+            // Frameworks/ in the app. Each bundle holds its binary under its own
+            // name, so the directory itself is what a loader needs.
+            var frameworks = Path.Combine(baseDirectory, "Frameworks");
+            if (Directory.Exists(frameworks)
+                && Directory.EnumerateDirectories(frameworks, "*avutil*.framework").Any())
+            {
+                path = frameworks;
+                return true;
+            }
+
             path = baseDirectory;
             return false;
         }

@@ -55,6 +55,12 @@ jobs:
         run: |
           set -euo pipefail
           entries=()
+          if [[ -n "${FORCE}" && -z "${{ inputs.series }}" ]]; then
+            echo "::error::force_rebuild requires an explicit series. Rebuilding every"
+            echo "::error::tracked series at once would burn a version number for each."
+            exit 1
+          fi
+
           for series in $(jq -r '.series | keys[]' versions.json); do
             if [[ -n "${{ inputs.series }}" && "${series}" != "${{ inputs.series }}" ]]; then
               continue
@@ -65,12 +71,17 @@ jobs:
             # shipped. That is the real idempotency check: it cannot be done by
             # asking whether the computed version is tagged, because the script
             # always returns an untagged version by construction.
-            if version=$(bash scripts/compute-version.sh "$tag" ${FORCE:+--force-rebuild} 2>/dev/null); then
-              echo "${series}: will release ${version} from upstream ${tag}"
-            else
-              echo "${series}: upstream ${tag} already released, skipping"
-              continue
-            fi
+            set +e
+            version=$(bash scripts/compute-version.sh "$tag" ${FORCE:+--force-rebuild} 2>/tmp/cv.err)
+            rc=$?
+            set -e
+            case "${rc}" in
+              0) echo "${series}: will release ${version} from upstream ${tag}" ;;
+              3) echo "${series}: upstream ${tag} already released, skipping"; continue ;;
+              *) echo "::error::compute-version failed for ${series} (${tag}), exit ${rc}"
+                 cat /tmp/cv.err >&2
+                 exit "${rc}" ;;
+            esac
             entries+=("{\"series\":\"${series}\",\"upstream\":\"${tag}\",\"version\":\"${version}\"}")
           done
           if [[ ${#entries[@]} -eq 0 ]]; then
@@ -97,14 +108,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-
-      - name: Resolve FFmpeg.AutoGen version for this series
-        id: autogen
-        run: |
-          resolved=$(curl -fsSL "https://api.nuget.org/v3-flatcontainer/ffmpeg.autogen.bindings.dynamicallyloaded/index.json" \
-            | jq -r '.versions[]' | grep "^${{ matrix.series }}\." | sort -V | tail -1 || true)
-          echo "version=${resolved}" >> "$GITHUB_OUTPUT"
-          echo "FFmpeg.AutoGen for ${{ matrix.series }}: ${resolved:-<none, using default>}"
 
       - name: Pack base packages
         run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase base
