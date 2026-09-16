@@ -1,31 +1,91 @@
 name: CI
 
-permissions:
-  contents: read
-
 on:
   pull_request:
-    branches:
-      - main
-      - "release/**"
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
-    outputs:
-      ffmpeg_version: ${{ steps.v.outputs.ffmpeg_version }}
+  helper:
+    name: Helper library
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - id: v
-        run: echo "ffmpeg_version=$(tr -d '[:space:]' < FFMPEG_VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet build src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj -c Release
+      - run: dotnet format --verify-no-changes src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj
 
-  build:
-    needs: resolve
-    uses: ./.github/workflows/build.yml
-    with:
-      ffmpeg_version: ${{ needs.resolve.outputs.ffmpeg_version }}
-      package_version: "0.0.0-pr"
+  lint:
+    name: Lint scripts and workflows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh
+
+      # A malformed workflow file fails silently: GitHub reports "workflow file
+      # issue" with no job, and a scheduled workflow would not surface it until
+      # its next cron. actionlint catches the YAML and the Actions-specific
+      # mistakes, including the shell scripts embedded in run: blocks.
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  # Packs a real subset on Linux and asserts the package layout. Linux matters:
+  # Windows tar cannot create symlinks, so the duplicate-library bug the
+  # normalization guards against does not even reproduce there.
+  pack:
+    name: Pack and verify (${{ matrix.series }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        series: ["9.0", "8.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - id: tag
+        run: echo "tag=$(jq -r '.series["${{ matrix.series }}"]' versions.json)" >> "$GITHUB_OUTPUT"
+
+      # Every RID, for every tracked series. A subset here would leave the
+      # series that upstream moved less recently packing platforms nothing
+      # had built since, and the release packs all of them for both.
+      - name: Pack every RID
+        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+
+      # The v3 cells carry the GPL-only third-party libraries, so they are where
+      # a build machine's incidental SDK shows up as a hard import. Packing one
+      # of them puts the Windows import check on a package that can actually
+      # fail it - the lgplv2 set above never links anything outside the OS, so
+      # on its own it would let a broken v3 artifact through to a release.
+      - name: Pack a v3 Windows cell for the import check
+        run: |
+          RIDS="win-x64" CELLS="lgplv3" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+
+      - name: Pack metas
+        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase meta
+
+      - name: Verify package contents
+        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
+
+      - name: Verify consumer restore and build
+        run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nupkgs-${{ matrix.series }}
+          path: nupkgs/*.nupkg
+          retention-days: 7

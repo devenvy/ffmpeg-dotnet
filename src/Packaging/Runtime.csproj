@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Packs one platform's native payload. Driven by scripts/pack.sh:
+      dotnet pack Runtime.csproj -p:Cell=LGPLv2 -p:Rid=linux-x64 -p:Version=...
+
+    Uses MSBuild item globbing rather than a nuspec <files> glob: NuGet computes
+    a nuspec glob's base path in a way that did not survive a relative
+    NuspecBasePath, and silently packed the staging directory structure into the
+    target path. PackagePath here is exact.
+  -->
+  <PropertyGroup>
+    <PackageId>DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.$(Rid)</PackageId>
+    <Description>FFmpeg $(FFmpegVersion) $(Cell) native binaries for $(Rid). Reference this directly when your build targets $(Rid), or DevEnvy.FFmpeg.Binaries.$(Cell).Runtime.All when it sets no RuntimeIdentifier.</Description>
+    <PackageLicenseExpression>$(CellLicense)</PackageLicenseExpression>
+    <!-- Without this, Authors defaults to the project name and the gallery
+         permanently shows "Runtime" / "Apple" as the package author. -->
+    <Authors>DevEnvy</Authors>
+
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <IsPackable>true</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- NU5128: no lib/ folder. Deliberate - this package carries only natives. -->
+    <NoWarn>NU5128;NU5100</NoWarn>
+
+    <StagingDir Condition="'$(StagingDir)' == ''">$(MSBuildThisFileDirectory)../../staging/$(Cell)/$(Rid)/</StagingDir>
+    <TargetsFile Condition="'$(TargetsFile)' == ''">$(MSBuildThisFileDirectory)../../.nuspec-gen/$(PackageId).targets</TargetsFile>
+  </PropertyGroup>
+
+  <!-- Every payload package brings the locator, so a single PackageReference
+       gives a consumer both the binaries and a supported way to find them. -->
+  <ItemGroup>
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries" Version="$(Version)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(StagingDir)native/**" PackagePath="runtimes/$(Rid)/native/" Pack="true" />
+    <!-- Notices go at the package root. Anything under runtimes/**/native is a
+         native asset to NuGet and would be copied into every consumer's output. -->
+    <None Include="$(StagingDir)legal/**" PackagePath="legal/" Pack="true" />
+    <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
+    <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
+  </ItemGroup>
+
+</Project>

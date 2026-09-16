@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shipped in build/ and buildTransitive/ of the all-platform meta packages.
+
+  That meta carries every platform, which is what makes a RID-less build work at
+  all but also puts ~415 MB of natives into bin/. Setting FFmpegRuntimeIdentifiers
+  narrows what gets copied:
+
+      <PropertyGroup>
+        <FFmpegRuntimeIdentifiers>linux-x64;win-x64</FFmpegRuntimeIdentifiers>
+      </PropertyGroup>
+
+  This trims the copy, not the restore — the packages are still downloaded to the
+  global packages folder. To narrow the restore itself, reference
+  DevEnvy.FFmpeg.Binaries.{Cell}.Rid, whose runtime.json resolves exactly the RID
+  being built.
+
+  Three details here were established by testing rather than assumption:
+
+    1. Build and publish resolve separately. Filtering ReferenceCopyLocalPaths
+       trims the build output and has no effect whatsoever on publish, which
+       computes ResolvedFileToPublish on its own path. Both need a filter.
+    2. The filter is scoped by NuGetPackageId. These targets run inside someone
+       else's project; unscoped, they would trim that project's other native
+       packages too.
+    3. It is skipped when a RID is set, because the SDK has already selected a
+       single RID and flattened it, and the RuntimeIdentifier metadata this keys
+       on is no longer present in the same shape.
+-->
+<Project>
+
+  <PropertyGroup>
+    <_DevEnvyFFmpegPackagePrefix>DevEnvy.FFmpeg.Binaries.</_DevEnvyFFmpegPackagePrefix>
+    <_DevEnvyFFmpegKeep>;$(FFmpegRuntimeIdentifiers);</_DevEnvyFFmpegKeep>
+    <_DevEnvyFFmpegTrimActive Condition="'$(FFmpegRuntimeIdentifiers)' != '' AND '$(RuntimeIdentifier)' == ''">true</_DevEnvyFFmpegTrimActive>
+  </PropertyGroup>
+
+  <Target Name="DevEnvyFFmpegTrimBuildOutput"
+          AfterTargets="ResolveReferences"
+          Condition="'$(_DevEnvyFFmpegTrimActive)' == 'true'">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="
+        '%(ReferenceCopyLocalPaths.RuntimeIdentifier)' != '' AND
+        $([System.String]::Copy('%(ReferenceCopyLocalPaths.NuGetPackageId)').StartsWith('$(_DevEnvyFFmpegPackagePrefix)')) AND
+        !$(_DevEnvyFFmpegKeep.Contains(';%(ReferenceCopyLocalPaths.RuntimeIdentifier);'))" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="DevEnvyFFmpegTrimPublishOutput"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(_DevEnvyFFmpegTrimActive)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="
+        '%(ResolvedFileToPublish.RuntimeIdentifier)' != '' AND
+        $([System.String]::Copy('%(ResolvedFileToPublish.NuGetPackageId)').StartsWith('$(_DevEnvyFFmpegPackagePrefix)')) AND
+        !$(_DevEnvyFFmpegKeep.Contains(';%(ResolvedFileToPublish.RuntimeIdentifier);'))" />
+    </ItemGroup>
+  </Target>
+
+</Project>
