@@ -1,5 +1,5 @@
 {
-  "$comment": "FFmpeg series -> tracked devenvy/ffmpeg release tag. check-updates.yml opens one PR per series that moves. Adding or dropping a series is a one-line edit.",
+  "$comment": "FFmpeg series -> tracked devenvy/ffmpeg release tag. check-updates.yml opens a single PR bumping every series that moved. Adding or dropping a series is a one-line edit.",
   "series": {
     "9.0": "9.0.1.9",
     "8.1": "8.1.2.9"

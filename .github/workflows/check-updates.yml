@@ -25,9 +25,16 @@ jobs:
       # Upstream publishes several series in parallel and marks only one
       # "latest", so releases/latest is never consulted: it points at whichever
       # series published most recently and would silently abandon the others.
-      - name: Open a PR per series that moved
+      - name: Open one PR for every series that moved
         env:
           GH_TOKEN: ${{ github.token }}
+          # Always update the repository's default branch. workflow_dispatch
+          # can be launched from any ref, including the rolling head branch.
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          # A single rolling branch rather than one per version. It is rebuilt
+          # from the base branch on every run, so a merge of one series can
+          # never leave another series' PR conflicting.
+          BRANCH: auto/ffmpeg-updates
         run: |
           set -euo pipefail
 
@@ -35,7 +42,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           UPSTREAM=$(gh release list --repo devenvy/ffmpeg --limit 100 \
+            --exclude-drafts --exclude-pre-releases \
             --json tagName --jq '.[].tagName')
+
+          # Every series that moves is applied to one working copy and
+          # described in one list, so N series still yield one commit and one
+          # PR rather than N of each.
+          work=$(mktemp)
+          cp versions.json "${work}"
+          moved=()
+          bullets=()
+          missing=()
 
           # shellcheck disable=SC2016  # jq program, not a shell expansion
           for series in $(jq -r '.series | keys[]' versions.json); do
@@ -51,7 +68,7 @@ jobs:
               | tail -1 || true)
 
             if [[ -z "${latest}" ]]; then
-              echo "::warning::${series}: no upstream release matched - listing may be truncated"
+              missing+=("${series}")
               continue
             fi
             if [[ "${latest}" == "${current}" ]]; then
@@ -68,42 +85,61 @@ jobs:
             fi
 
             echo "${series}: ${current} -> ${latest}"
-            branch="auto/ffmpeg-${latest}"
+            moved+=("${series} -> ${latest}")
+            bullets+=("$(printf -- '- `%s`: `%s` -> [`%s`](https://github.com/devenvy/ffmpeg/releases/tag/%s)' \
+              "${series}" "${current}" "${latest}" "${latest}")")
 
-            open_prs=$(gh pr list --head "${branch}" --state open --json number --jq 'length')
-            if [[ "${open_prs}" != "0" ]]; then
-              echo "  PR for ${branch} already open, skipping"
-              continue
-            fi
-            if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
-              # A branch with no open PR is left over from a run that pushed and
-              # then failed or was cancelled before creating the PR. Reuse it
-              # rather than skipping forever.
-              echo "  reusing orphaned branch ${branch}"
-              git push origin --delete "${branch}" || true
-            fi
-
-            git checkout -B "${branch}" "origin/${GITHUB_REF_NAME}"
-            jq --arg s "$series" --arg v "$latest" '.series[$s] = $v' versions.json > versions.tmp
-            mv versions.tmp versions.json
-            git add versions.json
-            git commit -m "Bump FFmpeg ${series} series to ${latest}"
-            git push -u origin "${branch}"
-
-            # Body written to a file rather than passed inline: a multi-line
-            # string with a line at column 0 terminates the enclosing YAML
-            # block scalar, which silently breaks the whole workflow file.
-            {
-              printf 'Upstream [`%s`](https://github.com/devenvy/ffmpeg/releases/tag/%s) is available (was `%s`).\n\n' \
-                "${latest}" "${latest}" "${current}"
-              printf 'Merging this releases the `%s` series only. Other tracked series are unaffected.\n' \
-                "${series}"
-            } > /tmp/pr-body.md
-
-            gh pr create \
-              --title "Bump FFmpeg ${series} series to ${latest}" \
-              --body-file /tmp/pr-body.md \
-              --base "${GITHUB_REF_NAME}" --head "${branch}"
-
-            git checkout "${GITHUB_REF_NAME}"
+            # shellcheck disable=SC2016
+            jq --arg s "$series" --arg v "$latest" '.series[$s] = $v' "${work}" > "${work}.tmp"
+            mv "${work}.tmp" "${work}"
           done
+
+          if [[ ${#missing[@]} -ne 0 ]]; then
+            printf '::error::No upstream release matched tracked series: %s. Refusing to create a partial update PR.\n' \
+              "${missing[*]}"
+            exit 1
+          fi
+
+          if [[ ${#moved[@]} -eq 0 ]]; then
+            echo "All series up to date, nothing to open."
+            exit 0
+          fi
+
+          if [[ ${#moved[@]} -eq 1 ]]; then
+            title="Bump FFmpeg: ${moved[0]}"
+          else
+            title="Bump ${#moved[@]} FFmpeg series"
+          fi
+
+          # Rebuilt from the base branch every run, so the branch never carries
+          # a stale merge base. The force-push is what keeps a PR that is
+          # already open pointing at the newest set of releases.
+          git checkout -B "${BRANCH}" "origin/${BASE_BRANCH}"
+          mv "${work}" versions.json
+          git add versions.json
+          git commit -m "${title}"
+          git push --force -u origin "${BRANCH}"
+
+          # Body written to a file rather than passed inline: a multi-line
+          # string with a line at column 0 terminates the enclosing YAML
+          # block scalar, which silently breaks the whole workflow file.
+          {
+            printf 'New upstream releases are available for the series below.\n\n'
+            printf '%s\n' "${bullets[@]}"
+            printf '\nMerging this updates every series listed, in one go. Series not\n'
+            printf 'listed are already up to date and are left untouched.\n'
+          } > /tmp/pr-body.md
+
+          # The force-push above already retargeted any open PR on this branch,
+          # so an existing one only needs its title and body refreshed.
+          open_pr=$(gh pr list --base "${BASE_BRANCH}" --head "${BRANCH}" \
+            --state open --json number --jq '.[0].number // empty')
+          if [[ -n "${open_pr}" ]]; then
+            echo "Refreshing PR #${open_pr} already open for ${BRANCH}"
+            gh pr edit "${open_pr}" --title "${title}" --body-file /tmp/pr-body.md
+          else
+            gh pr create \
+              --title "${title}" \
+              --body-file /tmp/pr-body.md \
+              --base "${BASE_BRANCH}" --head "${BRANCH}"
+          fi
