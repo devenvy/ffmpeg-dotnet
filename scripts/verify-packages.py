@@ -21,6 +21,10 @@ _audit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_audit)
 _pe, _SYSTEM_DLL = _audit.pe, _audit.SYSTEM_DLL
 
+# Upstream's single notices file: the effective licence, FFmpeg's build and
+# source details, and every bundled library's licence text.
+NOTICES = "THIRD-PARTY-NOTICES.txt"
+
 directory = pathlib.Path(sys.argv[1])
 packages = sorted(directory.glob("*.nupkg"))
 if not packages:
@@ -127,15 +131,18 @@ for pkg in packages:
     check(not bad, f"{name}: doubled path segments (PackagePath/%(RecursiveDir) bug): {bad[:2]}")
 
     # Anything under runtimes/**/native is a native asset NuGet copies into the
-    # consumer's output. Licence text belongs at the package root instead.
-    check(not any("native/" in n and "/legal/" in n for n in names),
-          f"{name}: legal/ is nested under native/ and would be copied into consumer output")
+    # consumer's output, and frameworks/ is linked into the app. Licence text
+    # belongs at the package root instead, once.
+    misplaced = [n for n in names
+                 if n.rsplit("/", 1)[-1] == NOTICES and n != NOTICES]
+    check(not misplaced,
+          f"{name}: {NOTICES} outside the package root would be copied into consumer output: {misplaced[:2]}")
 
     # These are file containers. A stray compiled assembly means IncludeBuildOutput leaked.
     if payload:
         check(not any(n.startswith("lib/") and n.endswith(".dll") for n in names),
               f"{name}: contains a lib/*.dll — IncludeBuildOutput leaked into a native package")
-        check(any(n.startswith("legal/") for n in names), f"{name}: ships no legal/ notices")
+        check(NOTICES in names, f"{name}: ships no {NOTICES} at the package root")
         check(bool(payload), f"{name}: has no native payload at all")
 
     if payload and "frameworks/" not in "".join(payload):

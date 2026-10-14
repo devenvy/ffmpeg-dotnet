@@ -15,6 +15,10 @@ Pick a license variant, then reference the platform you build for.
 | `GPLv2`  | GPL-2.0 |
 | `GPLv3`  | GPL-3.0 |
 
+Every platform package carries upstream's `THIRD-PARTY-NOTICES.txt` at its root: the effective
+licence, FFmpeg's build and source details, and every bundled library's licence text. NuGet does
+not copy it into your build or publish output; distributing it with your app is up to you.
+
 ```
 DevEnvy.FFmpeg.Binaries                        path helper, no binaries
 DevEnvy.FFmpeg.Binaries.<variant>.Runtime.<rid>  one platform's binaries

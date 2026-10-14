@@ -6,8 +6,8 @@
 
 ## Revisions during implementation
 
-The sections below describe the approved design. Eight things changed while building it, each
-because something was measured or reviewed rather than assumed. Where a section further down
+The sections below describe the approved design. Nine things changed while building it or
+since, each because something was measured, reviewed or changed upstream rather than assumed. Where a section further down
 contradicts this list, this list is current.
 
 0. **Final package shape (supersedes items 1, 2 and 8 below).** One package per
@@ -37,8 +37,9 @@ contradicts this list, this list is current.
    loaded resolver builds versioned Unix names (`libavcodec.so.61`) and cannot load Android's
    unversioned `.so` files or iOS frameworks, so depending on it would advertise mobile bindings
    that do not work. The helper is now pure path resolution; consumers add a binding themselves.
-4. **`legal/` is packed at the package root, never under `runtimes/**/native/`.** Anything below
-   `native/` is a native asset NuGet copies into every consumer's build and publish output.
+4. **The licence notices are packed at the package root, never under `runtimes/**/native/`.**
+   Anything below `native/` is a native asset NuGet copies into every consumer's build and
+   publish output. (Originally `legal/`; see item 9 for the single file that replaced it.)
 5. **`release.yml` is not tag-triggered.** The original design had it triggered by a tag *and*
    creating that tag, which cannot work. It now runs on a merge to `main` or by hand, and is
    idempotent: a series is released when its computed version has no `v*` tag yet.
@@ -51,6 +52,13 @@ contradicts this list, this list is current.
    the bit and `read` does not, so shared libraries were never affected.
 8. **Package count is 57, not 53** — the four `.Rid` metas, plus the helper, 4 metas, 44 runtime
    and 4 Apple packages.
+9. **`legal/` became one `THIRD-PARTY-NOTICES.txt`.** Upstream moved its archives to the
+   `ffmpeg-build` engine, which drops the `legal/` directory and instead puts a single
+   `THIRD-PARTY-NOTICES.txt` at every archive's root: the effective licence, FFmpeg's build and
+   source details, and every bundled library's licence text. The iOS bundle carries one too, at
+   the root beside the `.xcframework`s, covering all three slices. Every platform and Apple
+   package ships that file at its package root; a pack whose archive lacks it fails rather than
+   shipping binaries without their licence texts.
 
 One review finding was investigated and **not** acted on. Codex flagged that `linux-musl-x64`
 falls back to `linux-x64` in the RID graph, so the all-platform meta can have NuGet select glibc
@@ -133,6 +141,7 @@ never downloads.
 
 All twelve carry a `legal/` directory holding the cell's license notice plus every bundled
 dependency's license. It is shipped in every package — it is the LGPL compliance payload.
+(Superseded by `THIRD-PARTY-NOTICES.txt` at the archive root; see revision 9.)
 
 Since upstream release `9.0.1.5`, MoltenVK is statically linked into the iOS libraries, so
 every iOS cell now contains exactly the same six xcframeworks. The staging code still
@@ -399,7 +408,7 @@ Every download is verified against the release's `SHA256SUMS` before extraction.
 - no symlinked or duplicate libraries survived staging (the size regression this guards against
   is roughly 3x)
 - no `include/` directory in any package
-- `legal/` present in every platform package
+- `THIRD-PARTY-NOTICES.txt` at the root of every platform package, and nowhere else
 - `libc++_shared.so` present in both Android packages
 - every runtime package's payload sits under `runtimes/{rid}/native/`
 - each meta's dependency groups match the TFM table above

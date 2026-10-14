@@ -39,7 +39,7 @@
     <None Include="$(StagingDir)native/**" PackagePath="runtimes/$(Rid)/native/" Pack="true" />
     <!-- Notices go at the package root. Anything under runtimes/**/native is a
          native asset to NuGet and would be copied into every consumer's output. -->
-    <None Include="$(StagingDir)legal/**" PackagePath="legal/" Pack="true" />
+    <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
   </ItemGroup>
