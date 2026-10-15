@@ -17,8 +17,10 @@ jobs:
     name: Helper library
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
       - run: dotnet build src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj -c Release
@@ -28,7 +30,9 @@ jobs:
     name: Lint scripts and workflows
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - run: shellcheck scripts/*.sh
 
       # A malformed workflow file fails silently: GitHub reports "workflow file
@@ -36,9 +40,15 @@ jobs:
       # its next cron. actionlint catches the YAML and the Actions-specific
       # mistakes, including the shell scripts embedded in run: blocks.
       - name: actionlint
-        run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+
+      # zizmor catches the security mistakes: unpinned actions, persisted
+      # credentials, untrusted values expanded into run: scripts, excessive
+      # permissions.
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false # fail the job on findings instead of uploading SARIF
 
   # Packs a real subset on Linux and asserts the package layout. Linux matters:
   # Windows tar cannot create symlinks, so the duplicate-library bug the
@@ -51,19 +61,27 @@ jobs:
       matrix:
         series: ["9.0", "8.1"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
       - id: tag
-        run: echo "tag=$(jq -r '.series["${{ matrix.series }}"]' versions.json)" >> "$GITHUB_OUTPUT"
+        env:
+          SERIES: ${{ matrix.series }}
+        run: |
+          # shellcheck disable=SC2016  # jq program, not a shell expansion
+          echo "tag=$(jq -r --arg s "${SERIES}" '.series[$s]' versions.json)" >> "$GITHUB_OUTPUT"
 
       # Every RID, for every tracked series. A subset here would leave the
       # series that upstream moved less recently packing platforms nothing
       # had built since, and the release packs all of them for both.
       - name: Pack every RID
-        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+        env:
+          UPSTREAM_TAG: ${{ steps.tag.outputs.tag }}
+        run: CELLS="lgplv2" bash scripts/pack.sh "${UPSTREAM_TAG}" 0.0.0-ci --output ./nupkgs --phase base
 
       # The v3 cells carry the GPL-only third-party libraries, so they are where
       # a build machine's incidental SDK shows up as a hard import. Packing one
@@ -71,11 +89,15 @@ jobs:
       # fail it - the lgplv2 set above never links anything outside the OS, so
       # on its own it would let a broken v3 artifact through to a release.
       - name: Pack a v3 Windows cell for the import check
+        env:
+          UPSTREAM_TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          RIDS="win-x64" CELLS="lgplv3" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase base
+          RIDS="win-x64" CELLS="lgplv3" bash scripts/pack.sh "${UPSTREAM_TAG}" 0.0.0-ci --output ./nupkgs --phase base
 
       - name: Pack metas
-        run: CELLS="lgplv2" bash scripts/pack.sh "${{ steps.tag.outputs.tag }}" 0.0.0-ci --output ./nupkgs --phase meta
+        env:
+          UPSTREAM_TAG: ${{ steps.tag.outputs.tag }}
+        run: CELLS="lgplv2" bash scripts/pack.sh "${UPSTREAM_TAG}" 0.0.0-ci --output ./nupkgs --phase meta
 
       - name: Verify package contents
         run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
@@ -83,9 +105,26 @@ jobs:
       - name: Verify consumer restore and build
         run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: nupkgs-${{ matrix.series }}
           path: nupkgs/*.nupkg
           retention-days: 7
+
+  # The single required status check: the branch ruleset requires this job
+  # alone, so adding or renaming a job above never needs a ruleset change.
+  result:
+    if: always()
+    needs: [helper, lint, pack]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: All jobs passed
+        env:
+          HELPER: ${{ needs.helper.result }}
+          LINT: ${{ needs.lint.result }}
+          PACK: ${{ needs.pack.result }}
+        run: |
+          for result in "$HELPER" "$LINT" "$PACK"; do test "$result" = "success"; done

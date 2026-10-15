@@ -38,7 +38,8 @@
          directory portion would drop the bundle name from %(RecursiveDir) and
          flatten all six frameworks on top of each other. -->
     <None Include="$(StagingDir)frameworks/**" PackagePath="frameworks/" Pack="true" />
-    <None Include="$(StagingDir)legal/**" PackagePath="legal/" Pack="true" />
+    <!-- At the package root, as in Runtime.csproj: never copied into a consumer's app. -->
+    <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
   </ItemGroup>

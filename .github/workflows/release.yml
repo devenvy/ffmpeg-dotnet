@@ -27,9 +27,7 @@ on:
         default: true
         type: boolean
 
-permissions:
-  contents: write
-  id-token: write   # NuGet trusted publishing (OIDC)
+permissions: {}
 
 concurrency:
   group: release
@@ -39,12 +37,15 @@ jobs:
   plan:
     name: Plan releases
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       any: ${{ steps.plan.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # Idempotent by design: a series is released when its computed version has
@@ -123,28 +124,46 @@ jobs:
           fi
           echo "plan: ${matrix}"
 
-  release:
-    name: Release ${{ matrix.version }}
+  # the smoke tests on what is about to be published: nothing reaches NuGet unless a real app on every platform loads it
+  smoke:
     needs: plan
     if: needs.plan.outputs.any == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/smoke-test.yml
+
+  release:
+    name: Release ${{ matrix.version }}
+    needs: [plan, smoke]
+    if: needs.plan.outputs.any == 'true'
+    permissions:
+      contents: write # pushes the release tag and creates the GitHub release
+      id-token: write # NuGet trusted publishing (OIDC)
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
       - name: Pack base packages
-        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase base
+        env:
+          UPSTREAM_TAG: ${{ matrix.upstream }}
+          RELEASE_VERSION: ${{ matrix.version }}
+        run: bash scripts/pack.sh "${UPSTREAM_TAG}" "${RELEASE_VERSION}" --output ./nupkgs --phase base
 
       - name: Pack meta packages
-        run: bash scripts/pack.sh "${{ matrix.upstream }}" "${{ matrix.version }}" --output ./nupkgs --phase meta
+        env:
+          UPSTREAM_TAG: ${{ matrix.upstream }}
+          RELEASE_VERSION: ${{ matrix.version }}
+        run: bash scripts/pack.sh "${UPSTREAM_TAG}" "${RELEASE_VERSION}" --output ./nupkgs --phase meta
 
       # Three gates, cheapest first. Structure, then a real restore/build, then
       # actually loading a library and running ffmpeg. The cross-platform smoke
@@ -158,7 +177,9 @@ jobs:
         run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
 
       - name: Verify a consumer can restore and build
-        run: bash scripts/verify-consumer.sh ./nupkgs "${{ matrix.version }}"
+        env:
+          RELEASE_VERSION: ${{ matrix.version }}
+        run: bash scripts/verify-consumer.sh ./nupkgs "${RELEASE_VERSION}"
 
       - name: Verify the binaries actually run
         env:
@@ -172,6 +193,8 @@ jobs:
         if: inputs.dry_run
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
+          RELEASE_VERSION: ${{ matrix.version }}
+          UPSTREAM_TAG: ${{ matrix.upstream }}
         run: |
           echo "DRY RUN - nothing will be pushed or tagged."
           echo
@@ -187,8 +210,8 @@ jobs:
             echo "    $(basename "$f")"
           done
           echo
-          echo "would tag:    v${{ matrix.version }}"
-          echo "would create: release v${{ matrix.version }} from upstream ${{ matrix.upstream }}"
+          echo "would tag:    v${RELEASE_VERSION}"
+          echo "would create: release v${RELEASE_VERSION} from upstream ${UPSTREAM_TAG}"
           if [ -n "${NUGET_USER}" ]; then
             echo "NUGET_USER: present (publishing uses OIDC trusted publishing)"
           else
@@ -200,7 +223,7 @@ jobs:
       - name: NuGet login (OIDC)
         if: ${{ !inputs.dry_run }}
         id: login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
@@ -243,12 +266,14 @@ jobs:
       # graph. Wait for the feed to actually serve them rather than assuming.
       - name: Wait for the feed to index the payload packages
         if: ${{ !inputs.dry_run }}
-        run: bash scripts/wait-for-index.sh "${{ matrix.version }}" ./nupkgs
+        env:
+          RELEASE_VERSION: ${{ matrix.version }}
+        run: bash scripts/wait-for-index.sh "${RELEASE_VERSION}" ./nupkgs
 
       - name: NuGet login (OIDC, refreshed after the indexing wait)
         if: ${{ !inputs.dry_run }}
         id: login_meta
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
@@ -315,10 +340,13 @@ jobs:
             git tag "${tag}"
           fi
 
-          if git ls-remote --exit-code --tags origin "${tag}" >/dev/null 2>&1; then
+          # The checkout keeps no credential, so the token reaches git for these
+          # two calls only, in the remote's URL (never written to .git/config).
+          remote="https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --tags "${remote}" "${tag}" >/dev/null 2>&1; then
             echo "${tag} already on origin"
           else
-            git push origin "${tag}"
+            git push "${remote}" "refs/tags/${tag}"
           fi
 
           if gh release view "${tag}" >/dev/null 2>&1; then

@@ -1,0 +1,45 @@
+version: 2
+
+# One weekly pull request per ecosystem, plus one for security fixes: the actions the workflows use and the .NET
+# projects' NuGet packages. Version updates wait out a 7-day cooldown, so a compromised release is usually caught
+# before it reaches a PR (security updates are not delayed). The workflows pin each action by commit SHA with its
+# version in a comment; Dependabot moves both together.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies]
+    commit-message:
+      prefix: ci
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+
+  # The helper library, the packaging stubs and the smoke test. NuGet does not tell runtime from development
+  # dependencies, so every bump is a chore.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies]
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 7
+    groups:
+      dependencies:
+        applies-to: version-updates
+        patterns: ['*']
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+    ignore:
+      # our own packages: the payloads and the helper are versioned by the release (versions.json), and the smoke test
+      # restores them from a local feed at 0.0.0-ci
+      - dependency-name: DevEnvy.FFmpeg.Binaries*

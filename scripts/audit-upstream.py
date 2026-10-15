@@ -199,13 +199,13 @@ def audit(root: Path, name: str):
     def add(kind, detail, path=''):
         f['issues'].append({'kind': kind, 'detail': detail, 'file': path})
 
-    entries = [p for p in root.rglob('*') if not p.is_dir() and 'legal' not in p.parts]
+    entries = [p for p in root.rglob('*') if not p.is_dir() and p.name != 'THIRD-PARTY-NOTICES.txt']
     real = [p for p in entries if not p.is_symlink()]
     links = [p for p in entries if p.is_symlink()]
     f['files'] = len(entries)
     f['real'] = len(real)
     f['symlinks'] = len(links)
-    f['has_legal'] = (root / 'legal').is_dir() or any('legal' in p.parts for p in root.rglob('*'))
+    f['has_notices'] = (root / 'THIRD-PARTY-NOTICES.txt').is_file()
 
     # Byte-identical real files: upstream symlinks these on Linux, so any platform
     # that ships them as copies is inconsistent and inflates the download.

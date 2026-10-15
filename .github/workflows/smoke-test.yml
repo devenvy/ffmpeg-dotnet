@@ -2,10 +2,26 @@ name: Smoke test
 
 # Proves the shipped binaries actually load and run on each platform, rather
 # than merely being present in the package. Package contents are checked by
-# verify-packages.sh; this checks that a real .NET app can use them.
+# verify-packages.sh; this checks that a real .NET app can use them. FFmpeg
+# itself is tested upstream (devenvy/ffmpeg tests every build before it
+# publishes); this tests the packaging: restore, where each platform's native
+# libraries land, and that an app loads them.
+#
+# Runs on a pull request that changes what it tests, weekly (a runner image or
+# .NET workload change can break it with no change here), and from release.yml
+# before anything is published.
 on:
   pull_request:
     branches: [main]
+    paths:
+      - versions.json
+      - src/**
+      - scripts/**
+      - tests/**
+      - Directory.Build.props
+      - "*.slnx"
+      - .github/workflows/smoke-test.yml
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * 1"
@@ -13,8 +29,9 @@ on:
 permissions:
   contents: read
 
+# per calling workflow: a scheduled run on main never cancels release.yml's
 concurrency:
-  group: smoke-${{ github.ref }}
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -42,7 +59,9 @@ jobs:
       catalyst_matrix: ${{ steps.m.outputs.catalyst_matrix }}
       ios_matrix: ${{ steps.m.outputs.ios_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - id: m
         run: |
           set -euo pipefail
@@ -85,18 +104,23 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.pack_matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
       - name: Pack ${{ matrix.artifact }}
+        env:
+          ARTIFACT: ${{ matrix.artifact }}
+          UPSTREAM_TAG: ${{ matrix.tag }}
         run: |
-          if [[ "${{ matrix.artifact }}" == "ios" ]]; then
-            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
+          if [[ "${ARTIFACT}" == "ios" ]]; then
+            RIDS="" CELLS="$CELL" PACK_IOS=1 bash scripts/pack.sh "${UPSTREAM_TAG}" "$PKG_VERSION" --output ./out --phase base
           else
-            RIDS="${{ matrix.artifact }}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase base
+            RIDS="${ARTIFACT}" CELLS="$CELL" PACK_IOS=0 bash scripts/pack.sh "${UPSTREAM_TAG}" "$PKG_VERSION" --output ./out --phase base
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pkg-${{ matrix.series }}-${{ matrix.artifact }}
           path: out/*.nupkg
@@ -109,12 +133,16 @@ jobs:
       matrix: ${{ fromJson(needs.resolve.outputs.meta_matrix) }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - run: CELLS="$CELL" bash scripts/pack.sh "${{ matrix.tag }}" "$PKG_VERSION" --output ./out --phase meta
-      - uses: actions/upload-artifact@v4
+      - env:
+          UPSTREAM_TAG: ${{ matrix.tag }}
+        run: CELLS="$CELL" bash scripts/pack.sh "${UPSTREAM_TAG}" "$PKG_VERSION" --output ./out --phase meta
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pkg-meta-${{ matrix.series }}
           path: out/*.nupkg
@@ -131,21 +159,25 @@ jobs:
     name: ${{ matrix.rid }} (${{ matrix.series }})
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
       - name: Smoke test
         shell: bash
-        run: bash scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+        env:
+          TARGET_RID: ${{ matrix.rid }}
+        run: bash scripts/run-smoke-test.sh "${TARGET_RID}" ./feed
 
   # musl has no dedicated runner, but an Alpine container on the matching
   # architecture runs natively - this is containerization, not emulation.
@@ -158,12 +190,14 @@ jobs:
     name: ${{ matrix.rid }} (${{ matrix.series }})
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
@@ -171,8 +205,10 @@ jobs:
       # image does not ship. Running docker explicitly keeps the checkout and
       # artifact steps on the host.
       - name: Smoke test in Alpine
+        env:
+          TARGET_RID: ${{ matrix.rid }}
         run: |
-          docker run --rm -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${{ matrix.rid }}" ./feed
+          docker run --rm -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${TARGET_RID}" ./feed
 
   # 32-bit ARM is the one RID with no hosted runner, native or containerized.
   armhf:
@@ -192,15 +228,17 @@ jobs:
     # second of emulated execution.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-linux-armhf
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
@@ -208,7 +246,7 @@ jobs:
       - name: Publish the smoke test for linux-arm (native, not emulated)
         run: bash scripts/publish-smoke-test.sh linux-arm ./feed ./armhf-app
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: arm
 
@@ -230,15 +268,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.android_matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-${{ matrix.rid }}
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
@@ -246,20 +286,23 @@ jobs:
       - run: dotnet workload install android --skip-sign-check
 
       - name: Build an Android head and inspect the APK
+        env:
+          TARGET_RID: ${{ matrix.rid }}
+          JNI_DIR: ${{ matrix.jni }}
         run: |
           set -euo pipefail
-          bash scripts/new-mobile-test.sh android "$PWD/feed" "${{ matrix.rid }}"
+          bash scripts/new-mobile-test.sh android "$PWD/feed" "${TARGET_RID}"
           cd .mobile/android
-          dotnet build -c Release -f net10.0-android -r ${{ matrix.rid }} \
+          dotnet build -c Release -f net10.0-android -r "${TARGET_RID}" \
             -p:AndroidPackageFormat=apk
 
           apk=$(find . -name '*-Signed.apk' -o -name '*.apk' | head -1)
           echo "APK: ${apk}"
-          unzip -l "${apk}" | grep -E "lib/${{ matrix.jni }}/" | sed 's/^/  /'
+          unzip -l "${apk}" | grep -E "lib/${JNI_DIR}/" | sed 's/^/  /'
 
           for lib in libavcodec.so libavutil.so libc++_shared.so; do
-            unzip -l "${apk}" | grep -q "lib/${{ matrix.jni }}/${lib}" \
-              || { echo "FAIL: ${lib} missing from lib/${{ matrix.jni }}/ in the APK"; exit 1; }
+            unzip -l "${apk}" | grep -q "lib/${JNI_DIR}/${lib}" \
+              || { echo "FAIL: ${lib} missing from lib/${JNI_DIR}/ in the APK"; exit 1; }
           done
           echo "PASS: FFmpeg libraries and libc++_shared are packed into the APK"
 
@@ -275,15 +318,17 @@ jobs:
     # this file saw different toolchains.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-ios
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
@@ -322,14 +367,17 @@ jobs:
           sudo xcode-select -s "${newest}/Contents/Developer"
           xcodebuild -version
 
-      - run: dotnet workload install maccatalyst --skip-sign-check
+      # the newest workload set the selected Xcode can build with (see the script)
+      - run: scripts/install-apple-workload.sh maccatalyst
 
       - name: Build a Catalyst head and inspect the app bundle
+        env:
+          TARGET_RID: ${{ matrix.rid }}
         run: |
           set -euo pipefail
-          bash scripts/new-mobile-test.sh maccatalyst "$PWD/feed" "${{ matrix.rid }}"
+          bash scripts/new-mobile-test.sh maccatalyst "$PWD/feed" "${TARGET_RID}"
           cd .mobile/maccatalyst
-          dotnet build -c Release -f net10.0-maccatalyst -r "${{ matrix.rid }}"
+          dotnet build -c Release -f net10.0-maccatalyst -r "${TARGET_RID}"
 
           # Under bin/ specifically: obj/ holds a codesign staging copy of the
           # bundle whose framework directories exist but are not yet populated,
@@ -355,20 +403,23 @@ jobs:
       matrix: ${{ fromJson(needs.resolve.outputs.ios_matrix) }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-${{ matrix.series }}-ios
           path: feed
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-meta-${{ matrix.series }}
           path: feed
 
-      - run: dotnet workload install ios --skip-sign-check
+      # the newest workload set the runner's Xcode can build with (see the script)
+      - run: scripts/install-apple-workload.sh ios
 
       - name: Build an iOS head and inspect the app bundle
         run: |

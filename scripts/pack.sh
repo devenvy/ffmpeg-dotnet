@@ -46,6 +46,7 @@ DOWNLOAD_DIR="${REPO_ROOT}/.downloads/${UPSTREAM_TAG}"
 STAGING_DIR="${REPO_ROOT}/staging"
 NUSPEC_DIR="${REPO_ROOT}/.nuspec-gen"
 STUB_CSPROJ="${REPO_ROOT}/src/Packaging/Packaging.csproj"
+NOTICES="THIRD-PARTY-NOTICES.txt"   # at the root of every upstream archive
 
 # Upstream artifact name -> .NET RID. Upstream calls 32-bit ARM "armhf"; .NET calls it linux-arm.
 declare -A RID_FOR_ARTIFACT=(
@@ -266,15 +267,19 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
         *)         normalize_desktop "${work}" ;;
       esac
 
-      # legal/ is packed at the package root, never under runtimes/{rid}/native/.
-      # Anything beneath native/ is a native asset to NuGet, so license text left
-      # there is copied into every consumer's build and publish output, and the
-      # per-dependency notices collide across packages on a flattened publish.
-      if [[ -d "${work}/legal" ]]; then
-        mkdir -p "${stage}/legal"
-        mv "${work}/legal"/* "${stage}/legal/"
-        rmdir "${work}/legal"
+      # Upstream puts one THIRD-PARTY-NOTICES.txt at the archive root: the
+      # effective licence, FFmpeg's build and source details, and every bundled
+      # library's licence text. It is packed at the package root, never under
+      # runtimes/{rid}/native/. Anything beneath native/ is a native asset to
+      # NuGet, so a notices file left there is copied into every consumer's
+      # build and publish output and collides across packages on a flattened
+      # publish. A missing file fails the pack: shipping binaries without their
+      # licence texts is not a smaller package, it is a non-compliant one.
+      if [[ ! -f "${work}/${NOTICES}" ]]; then
+        echo "ERROR: ${tarball} has no ${NOTICES}" >&2
+        exit 1
       fi
+      mv "${work}/${NOTICES}" "${stage}/${NOTICES}"
 
       echo "  staged ${PACKAGE_CELL[${cell}]}/${rid}"
     done
@@ -310,6 +315,10 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
       unpacked="${STAGING_DIR}/.apple-${PACKAGE_CELL[${cell}]}"
       rm -rf "${unpacked}"; mkdir -p "${unpacked}"
       tar -xzf "${DOWNLOAD_DIR}/${tarball}" -C "${unpacked}"
+      if [[ ! -f "${unpacked}/${NOTICES}" ]]; then
+        echo "ERROR: ${tarball} has no ${NOTICES}" >&2
+        exit 1
+      fi
 
       for rid in "${!APPLE_SLICE[@]}"; do
         slice="${APPLE_SLICE[${rid}]}"
@@ -328,7 +337,9 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
           exit 1
         fi
 
-        [[ -d "${unpacked}/legal" ]] && cp -R "${unpacked}/legal" "${stage}/"
+        # The bundle's one notices file covers all three slices, so every
+        # Apple package carries it whole.
+        cp "${unpacked}/${NOTICES}" "${stage}/${NOTICES}"
         echo "  staged ${PACKAGE_CELL[${cell}]}/${rid} (${found} frameworks from the ${slice} slice)"
       done
       rm -rf "${unpacked}"
