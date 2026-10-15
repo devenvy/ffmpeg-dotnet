@@ -350,7 +350,8 @@ jobs:
           sudo xcode-select -s "${newest}/Contents/Developer"
           xcodebuild -version
 
-      - run: dotnet workload install maccatalyst --skip-sign-check
+      # the newest workload set the selected Xcode can build with (see the script)
+      - run: scripts/install-apple-workload.sh maccatalyst
 
       - name: Build a Catalyst head and inspect the app bundle
         env:
@@ -400,7 +401,8 @@ jobs:
           name: pkg-meta-${{ matrix.series }}
           path: feed
 
-      - run: dotnet workload install ios --skip-sign-check
+      # the newest workload set the runner's Xcode can build with (see the script)
+      - run: scripts/install-apple-workload.sh ios
 
       - name: Build an iOS head and inspect the app bundle
         run: |
