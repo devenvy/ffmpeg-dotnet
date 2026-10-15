@@ -9,7 +9,7 @@ Kept as its own file rather than a heredoc inside the shell wrapper, because
 `python3 - <<EOF` discards the interpreter's exit code - the wrapper reported
 success even when this printed FAILURES.
 """
-import sys, zipfile, pathlib, collections, json, re, struct, importlib.util
+import sys, zipfile, pathlib, collections, re, struct, importlib.util
 
 # The PE parser and the Windows system-DLL allowlist already exist in
 # audit-upstream.py and are loaded rather than duplicated, so the allowlist has
@@ -74,7 +74,6 @@ for pkg in packages:
         # The slice directory name is gone after splitting, so "which slice is
         # this?" can only be answered from the Mach-O LC_BUILD_VERSION platform.
         # Catalyst ships universal, so fat binaries are walked per architecture.
-        CPU = {0x01000007: "x86_64", 0x0100000C: "arm64"}
 
         def mach_platforms(data):
             out = []
