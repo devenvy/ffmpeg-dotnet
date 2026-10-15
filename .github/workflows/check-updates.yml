@@ -1,13 +1,11 @@
-name: Check for new FFmpeg releases
+name: Check for FFmpeg updates
 
 on:
   schedule:
     - cron: "0 6 * * 1" # Weekly, Monday 06:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
   group: check-updates
@@ -17,6 +15,9 @@ jobs:
   check:
     name: Detect upstream releases
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # pushes the update branch
+      pull-requests: write # opens or refreshes its PR
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
