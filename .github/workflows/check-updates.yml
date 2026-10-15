@@ -18,8 +18,9 @@ jobs:
     name: Detect upstream releases
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # Upstream publishes several series in parallel and marks only one
@@ -118,7 +119,10 @@ jobs:
           mv "${work}" versions.json
           git add versions.json
           git commit -m "${title}"
-          git push --force -u origin "${BRANCH}"
+          # The checkout keeps no credential, so the token reaches git for this
+          # push only, in the remote's URL (never written to .git/config).
+          remote="https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          git push --force "${remote}" "HEAD:refs/heads/${BRANCH}"
 
           # Body written to a file rather than passed inline: a multi-line
           # string with a line at column 0 terminates the enclosing YAML

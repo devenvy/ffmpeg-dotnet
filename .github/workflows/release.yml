@@ -43,8 +43,9 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       any: ${{ steps.plan.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # Idempotent by design: a series is released when its computed version has
@@ -133,10 +134,11 @@ jobs:
       max-parallel: 1
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
@@ -200,7 +202,7 @@ jobs:
       - name: NuGet login (OIDC)
         if: ${{ !inputs.dry_run }}
         id: login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
@@ -248,7 +250,7 @@ jobs:
       - name: NuGet login (OIDC, refreshed after the indexing wait)
         if: ${{ !inputs.dry_run }}
         id: login_meta
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
@@ -315,10 +317,13 @@ jobs:
             git tag "${tag}"
           fi
 
-          if git ls-remote --exit-code --tags origin "${tag}" >/dev/null 2>&1; then
+          # The checkout keeps no credential, so the token reaches git for these
+          # two calls only, in the remote's URL (never written to .git/config).
+          remote="https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --tags "${remote}" "${tag}" >/dev/null 2>&1; then
             echo "${tag} already on origin"
           else
-            git push origin "${tag}"
+            git push "${remote}" "refs/tags/${tag}"
           fi
 
           if gh release view "${tag}" >/dev/null 2>&1; then

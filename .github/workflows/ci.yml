@@ -17,8 +17,10 @@ jobs:
     name: Helper library
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
       - run: dotnet build src/DevEnvy.FFmpeg.Binaries/DevEnvy.FFmpeg.Binaries.csproj -c Release
@@ -28,7 +30,9 @@ jobs:
     name: Lint scripts and workflows
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - run: shellcheck scripts/*.sh
 
       # A malformed workflow file fails silently: GitHub reports "workflow file
@@ -51,8 +55,10 @@ jobs:
       matrix:
         series: ["9.0", "8.1"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
@@ -83,7 +89,7 @@ jobs:
       - name: Verify consumer restore and build
         run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: nupkgs-${{ matrix.series }}
