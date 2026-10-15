@@ -124,9 +124,17 @@ jobs:
           fi
           echo "plan: ${matrix}"
 
+  # the smoke tests on what is about to be published: nothing reaches NuGet unless a real app on every platform loads it
+  smoke:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/smoke-test.yml
+
   release:
     name: Release ${{ matrix.version }}
-    needs: plan
+    needs: [plan, smoke]
     if: needs.plan.outputs.any == 'true'
     permissions:
       contents: write # pushes the release tag and creates the GitHub release

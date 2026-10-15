@@ -2,10 +2,26 @@ name: Smoke test
 
 # Proves the shipped binaries actually load and run on each platform, rather
 # than merely being present in the package. Package contents are checked by
-# verify-packages.sh; this checks that a real .NET app can use them.
+# verify-packages.sh; this checks that a real .NET app can use them. FFmpeg
+# itself is tested upstream (devenvy/ffmpeg tests every build before it
+# publishes); this tests the packaging: restore, where each platform's native
+# libraries land, and that an app loads them.
+#
+# Runs on a pull request that changes what it tests, weekly (a runner image or
+# .NET workload change can break it with no change here), and from release.yml
+# before anything is published.
 on:
   pull_request:
     branches: [main]
+    paths:
+      - versions.json
+      - src/**
+      - scripts/**
+      - tests/**
+      - Directory.Build.props
+      - "*.slnx"
+      - .github/workflows/smoke-test.yml
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * 1"
@@ -13,8 +29,9 @@ on:
 permissions:
   contents: read
 
+# per calling workflow: a scheduled run on main never cancels release.yml's
 concurrency:
-  group: smoke-${{ github.ref }}
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
