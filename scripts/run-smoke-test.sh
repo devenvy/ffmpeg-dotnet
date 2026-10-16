@@ -68,8 +68,26 @@ true
 
 PKG_VERSION="${PKG_VERSION:-0.0.0-ci}"
 
+# With AUTOGEN_SERIES (the FFmpeg series under test, e.g. 9.0), the smoke test also
+# binds through the newest FFmpeg.AutoGen of that series: the pairing the README
+# documents (FFmpeg.AutoGen's major.minor is the FFmpeg series it was generated for).
+AUTOGEN=""
+if [ -n "${AUTOGEN_SERIES:-}" ]; then
+  index="https://api.nuget.org/v3-flatcontainer/ffmpeg.autogen.bindings.dynamicallyloaded/index.json"
+  if command -v curl >/dev/null 2>&1; then listing=$(curl -fsSL "${index}"); else listing=$(wget -qO- "${index}"); fi
+  # each version is a quoted string in the index's "versions" array; prereleases carry a -
+  AUTOGEN=$(printf '%s' "${listing}" | grep -o '"[0-9][0-9.]*[^"]*"' | tr -d '"' \
+    | grep "^${AUTOGEN_SERIES}\." | grep -v -- '-' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -n 1 || true)
+  if [ -z "${AUTOGEN}" ]; then
+    echo "FAIL autogen: no FFmpeg.AutoGen release for FFmpeg ${AUTOGEN_SERIES} on nuget.org" >&2
+    exit 1
+  fi
+  echo "FFmpeg.AutoGen ${AUTOGEN} (series ${AUTOGEN_SERIES})"
+fi
+
 cd "${WORK}"
 exec dotnet run -c Release \
   -r "${RID}" --self-contained false \
   -p:FFmpegPackage="DevEnvy.FFmpeg.Binaries.${PKG_CELL}.Runtime.${RID}" \
-  -p:FFmpegPackageVersion="${PKG_VERSION}"
+  -p:FFmpegPackageVersion="${PKG_VERSION}" \
+  -p:FFmpegAutoGenVersion="${AUTOGEN}"

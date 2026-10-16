@@ -26,6 +26,9 @@ DynamicallyLoadedBindings.Initialize();
 `GetFFmpegPath()` and `GetFFprobePath()` return `null` on Android and iOS, whose packages
 ship libraries only.
 
+Use the FFmpeg.AutoGen of the same FFmpeg series as the package (`8.1.*` with `8.1.*`, `9.0.*` with
+`9.0.*`): its bindings load each library by the versioned name of that series.
+
 Staging keeps one name per shared library - the SONAME - so default P/Invoke probing for an
 unversioned name (`[DllImport("avcodec")]`) will not find it. Use FFmpeg.AutoGen's dynamic
 loader, or register a `DllImportResolver` that resolves to the versioned name.

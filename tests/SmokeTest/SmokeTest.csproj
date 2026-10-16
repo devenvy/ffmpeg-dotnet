@@ -20,4 +20,16 @@
     <PackageReference Include="$(FFmpegPackage)" Version="$(FFmpegPackageVersion)" />
   </ItemGroup>
 
+  <!--
+    With FFmpegAutoGenVersion (run-smoke-test.sh sets it to the newest FFmpeg.AutoGen of the
+    series under test), the libraries are also bound through FFmpeg.AutoGen, the pairing the
+    README documents. Desktop and Alpine only: AutoGen can't load the mobile builds.
+  -->
+  <PropertyGroup Condition="'$(FFmpegAutoGenVersion)' != ''">
+    <DefineConstants>$(DefineConstants);AUTOGEN</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(FFmpegAutoGenVersion)' != ''">
+    <PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLoaded" Version="$(FFmpegAutoGenVersion)" />
+  </ItemGroup>
+
 </Project>
