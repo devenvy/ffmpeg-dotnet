@@ -177,6 +177,8 @@ jobs:
         shell: bash
         env:
           TARGET_RID: ${{ matrix.rid }}
+          # also bind through this series' FFmpeg.AutoGen (scripts/run-smoke-test.sh)
+          AUTOGEN_SERIES: ${{ matrix.series }}
         run: bash scripts/run-smoke-test.sh "${TARGET_RID}" ./feed
 
   # musl has no dedicated runner, but an Alpine container on the matching
@@ -207,8 +209,10 @@ jobs:
       - name: Smoke test in Alpine
         env:
           TARGET_RID: ${{ matrix.rid }}
+          # also bind through this series' FFmpeg.AutoGen (scripts/run-smoke-test.sh)
+          AUTOGEN_SERIES: ${{ matrix.series }}
         run: |
-          docker run --rm -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${TARGET_RID}" ./feed
+          docker run --rm -e AUTOGEN_SERIES -v "$PWD:/w" -w /w             mcr.microsoft.com/dotnet/sdk:10.0-alpine             sh scripts/run-smoke-test.sh "${TARGET_RID}" ./feed
 
   # 32-bit ARM is the one RID with no hosted runner, native or containerized.
   armhf:

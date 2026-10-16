@@ -109,7 +109,18 @@ string dir = FFmpegBinaries.GetLibraryPath();
 under `runtimes/{rid}/native/`, while a RID-specific build or publish flattens them into the
 output root.
 
-This package brings **no binding library**. Pair it with FFmpeg.AutoGen:
+This package brings **no binding library**. Pair it with the FFmpeg.AutoGen of the same FFmpeg series:
+
+| Package version | FFmpeg | FFmpeg.AutoGen (`FFmpeg.AutoGen.Bindings.DynamicallyLoaded`) |
+|---|---|---|
+| `8.1.*` | 8.1 | `8.1.*` |
+| `9.0.*` | 9.0 | `9.0.*` |
+
+FFmpeg.AutoGen's major.minor is the FFmpeg series it was generated for. It loads each library by the
+versioned name its bindings expect (`avcodec-62.dll`, `libavcodec.so.62`), so a mismatched pair fails
+at load time; the smoke tests bind every desktop and Alpine package through its series' FFmpeg.AutoGen
+before anything is published.
+
 
 ```csharp
 DynamicallyLoadedBindings.LibrariesPath = FFmpegBinaries.GetLibraryPath();
