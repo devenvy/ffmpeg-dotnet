@@ -315,10 +315,25 @@ jobs:
       # release. Each action is conditional on its own absence: a re-run that
       # finds the tag pushed moves on to the release, and one that finds both
       # simply succeeds.
+      #
+      # The tag is pushed as devenvy-bot: GitHub refuses GITHUB_TOKEN a tag on a
+      # commit whose history changes workflow files ("refusing to allow a GitHub
+      # App to create or update workflow ... without `workflows` permission"),
+      # which left 9.0.2.400 published with no tag.
+      - id: app-token
+        if: ${{ !inputs.dry_run }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.DEVENVY_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.DEVENVY_BOT_PRIVATE_KEY }}
+          # pushing the release tag
+          permission-contents: write
+          permission-workflows: write
       - name: Tag and create release
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ matrix.version }}
           UPSTREAM: ${{ matrix.upstream }}
         run: |
@@ -340,9 +355,9 @@ jobs:
             git tag "${tag}"
           fi
 
-          # The checkout keeps no credential, so the token reaches git for these
-          # two calls only, in the remote's URL (never written to .git/config).
-          remote="https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          # The checkout keeps no credential, so the bot's token reaches git for
+          # these two calls only, in the remote's URL (never written to .git/config).
+          remote="https://x-access-token:${PUSH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code --tags "${remote}" "${tag}" >/dev/null 2>&1; then
             echo "${tag} already on origin"
           else

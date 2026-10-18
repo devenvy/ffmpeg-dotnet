@@ -11,7 +11,7 @@ set -euo pipefail
 #   ./scripts/pack.sh 9.0.1.5 9.0.1.500 --output ./nupkgs
 #
 # This repository does not build FFmpeg. It repackages the prebuilt assets from
-# devenvy/ffmpeg releases. See docs/superpowers/specs/ for the design.
+# devenvy/ffmpeg releases.
 #
 # Overridable for local runs, so one package can be packed instead of all 57:
 #   RIDS="linux-musl-x64" CELLS="gplv2" ./scripts/pack.sh 9.0.1.5 0.0.0-local

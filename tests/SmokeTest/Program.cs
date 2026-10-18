@@ -90,10 +90,49 @@ namespace SmokeTest
                 failures += RunFFmpeg(ffmpeg);
             }
 
+#if AUTOGEN
+            // 4. Bind with the FFmpeg.AutoGen that the README pairs with this series.
+            failures += BindWithAutoGen(dir);
+#endif
+
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "SMOKE TEST PASSED" : $"SMOKE TEST FAILED ({failures} failure(s))");
             return failures == 0 ? 0 : 1;
         }
+
+#if AUTOGEN
+        /// <summary>
+        /// Loads every library through FFmpeg.AutoGen's dynamically loaded bindings and calls into
+        /// each. AutoGen opens each library by the versioned name its bindings were generated for
+        /// (avcodec-62.dll, libavcodec.so.62, libavcodec.62.dylib), so this fails when the README's
+        /// pairing of package series and FFmpeg.AutoGen version stops holding.
+        /// </summary>
+        private static int BindWithAutoGen(string dir)
+        {
+            try
+            {
+                FFmpeg.AutoGen.Bindings.DynamicallyLoaded.DynamicallyLoadedBindings.LibrariesPath = dir;
+                FFmpeg.AutoGen.Bindings.DynamicallyLoaded.DynamicallyLoadedBindings.Initialize();
+                var versions = new[]
+                {
+                    ("avutil", FFmpeg.AutoGen.Abstractions.ffmpeg.avutil_version()),
+                    ("avcodec", FFmpeg.AutoGen.Abstractions.ffmpeg.avcodec_version()),
+                    ("avformat", FFmpeg.AutoGen.Abstractions.ffmpeg.avformat_version()),
+                    ("avfilter", FFmpeg.AutoGen.Abstractions.ffmpeg.avfilter_version()),
+                    ("swscale", FFmpeg.AutoGen.Abstractions.ffmpeg.swscale_version()),
+                    ("swresample", FFmpeg.AutoGen.Abstractions.ffmpeg.swresample_version()),
+                };
+                var listed = string.Join(" ", versions.Select(v => $"{v.Item1} {v.Item2 >> 16}.{(v.Item2 >> 8) & 0xFF}"));
+                Console.WriteLine($"PASS autogen: FFmpeg.AutoGen {typeof(FFmpeg.AutoGen.Abstractions.ffmpeg).Assembly.GetName().Version}: {listed}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"FAIL autogen: {ex.GetType().Name}: {ex.Message}");
+                return 1;
+            }
+        }
+#endif
 
         private static int RunFFmpeg(string ffmpeg)
         {
