@@ -56,9 +56,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          UPSTREAM=$(gh release list --repo devenvy/ffmpeg --limit 100 \
-            --exclude-drafts --exclude-pre-releases \
-            --json tagName --jq '.[].tagName')
+          # Every page, not the newest N: a series upstream has stopped
+          # publishing to would otherwise drop out of the window and match
+          # nothing, which fails the run below and stops every other update.
+          UPSTREAM=$(gh api --paginate "repos/devenvy/ffmpeg/releases?per_page=100" \
+            --jq '.[] | select(.draft or .prerelease | not) | .tag_name')
 
           # Every series that moves is applied to one working copy and
           # described in one list, so N series still yield one commit and one

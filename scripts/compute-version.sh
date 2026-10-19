@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # ==============================================================================
-# compute-version.sh <upstream-tag>
+# compute-version.sh <upstream-tag> [--force-rebuild]
 #
-# Prints the NuGet package version for an upstream release tag.
+# Prints the NuGet package version for an upstream release tag. Exits 3 when
+# that upstream build is already tagged, printing the tagged version instead.
 #
 #   z = (upstream_z * 100) + our_build
 #
@@ -46,9 +47,13 @@ done < <(git tag --list "v${FFMPEG}.*" | sed 's/^v//')
 #
 # A new upstream build is always worth releasing. Re-releasing the same upstream
 # build is a deliberate act and has to be asked for.
+#
+# The tagged version still goes to stdout, so the release planner can check
+# whether that tag's release was ever finished.
 if [[ "${HIGHEST}" -ge 0 && "${FORCE_REBUILD}" != "--force-rebuild" ]]; then
   echo "ERROR: upstream ${UPSTREAM_TAG} is already released as v${FFMPEG}.$(( BASE + HIGHEST ))." >&2
   echo "       Pass --force-rebuild to publish another packaging-only build." >&2
+  printf '%s.%d\n' "${FFMPEG}" $(( BASE + HIGHEST ))
   exit 3
 fi
 
