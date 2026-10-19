@@ -43,14 +43,28 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       any: ${{ steps.plan.outputs.any }}
     steps:
+      # A dispatch can be started from any branch, and a real run tags and
+      # publishes whatever it checked out. Only main ever publishes; a dry run
+      # publishes nothing, so it may exercise the release path from anywhere.
+      - name: Refuse to publish from a ref other than main
+        env:
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ -z "${DRY_RUN}" ] && [ "${REF}" != "refs/heads/main" ]; then
+            echo "::error::Refusing to publish from ${REF}: only refs/heads/main releases. Dispatch from main, or set dry_run."
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       # Idempotent by design: a series is released when its computed version has
-      # no v* tag yet. Re-running after a partial failure resumes rather than
-      # duplicating, and a no-op merge releases nothing.
+      # no v* tag yet, or is tagged with no GitHub release. Re-running after a
+      # partial failure resumes rather than duplicating, and a no-op merge
+      # releases nothing.
       - id: plan
         env:
           FORCE: ${{ inputs.force_rebuild && '1' || '' }}
@@ -58,6 +72,7 @@ jobs:
           # a quote in the dispatch input would otherwise land in the middle
           # of a bash condition and break parsing.
           ONLY_SERIES: ${{ inputs.series }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           entries=()
@@ -96,7 +111,23 @@ jobs:
             set -e
             case "${rc}" in
               0) echo "${series}: will release ${version} from upstream ${tag}" ;;
-              3) echo "${series}: upstream ${tag} already released, skipping"; continue ;;
+              3)
+                # The tag is pushed before any package is uploaded, so a tag
+                # alone does not mean the release finished: a run that failed
+                # after it left the version tagged with no GitHub release.
+                # Only the release, created last, marks it done. An unfinished
+                # one is planned again under the same version; the release
+                # job refuses it if the tag names a different commit, so a
+                # resume can never publish this version from other source.
+                if out=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${version}" 2>&1); then
+                  echo "${series}: upstream ${tag} already released as v${version}, skipping"
+                  continue
+                elif ! grep -q 'HTTP 404' <<< "${out}"; then
+                  echo "::error::could not look up release v${version} for ${series}: ${out}"
+                  exit 1
+                fi
+                echo "::warning::${series}: v${version} is tagged but has no GitHub release; resuming it"
+                ;;
               *) echo "::error::compute-version failed for ${series} (${tag}), exit ${rc}"
                  cat /tmp/cv.err >&2
                  exit "${rc}" ;;
@@ -198,7 +229,8 @@ jobs:
         run: |
           echo "DRY RUN - nothing will be pushed or tagged."
           echo
-          echo "would push, in this order:"
+          echo "would tag:    v${RELEASE_VERSION}, at ${GITHUB_SHA}"
+          echo "then push, in this order:"
           echo "  phase 1 (payloads + helper):"
           for f in nupkgs/*.nupkg; do
             case "$(basename "$f")" in *.Runtime.All.[0-9]*) continue ;; esac
@@ -210,12 +242,74 @@ jobs:
             echo "    $(basename "$f")"
           done
           echo
-          echo "would tag:    v${RELEASE_VERSION}"
-          echo "would create: release v${RELEASE_VERSION} from upstream ${UPSTREAM_TAG}"
+          echo "then create:  release v${RELEASE_VERSION} from upstream ${UPSTREAM_TAG}"
           if [ -n "${NUGET_USER}" ]; then
             echo "NUGET_USER: present (publishing uses OIDC trusted publishing)"
           else
             echo "NUGET_USER: MISSING - NuGet/login would fail at the push step"
+          fi
+
+      # Publishing is ordered tag, packages, release, and every step is
+      # resumable by re-running.
+      #
+      # The tag goes first because it records which commit this version is
+      # built from before anything irreversible happens. Without it, a run that
+      # uploaded some packages and then failed left nothing behind to say so: a
+      # later run after main moved computed the same version, and
+      # --skip-duplicate quietly filled in the rest of the set from different
+      # source. With the tag already pushed, that later run finds it at another
+      # commit and refuses below; re-running the failed run (same commit) is
+      # what finishes the version.
+      #
+      # The GitHub release goes last, after every package is on the feed, so it
+      # is what marks a version finished. The planner treats a tag with no
+      # release as unfinished and plans it again.
+      #
+      # The tag is pushed as devenvy-bot: GitHub refuses GITHUB_TOKEN a tag on a
+      # commit whose history changes workflow files ("refusing to allow a GitHub
+      # App to create or update workflow ... without `workflows` permission"),
+      # which left 9.0.2.400 published with no tag.
+      - id: app-token
+        if: ${{ !inputs.dry_run }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.DEVENVY_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.DEVENVY_BOT_PRIVATE_KEY }}
+          # pushing the release tag
+          permission-contents: write
+          permission-workflows: write
+      - name: Tag the source commit
+        if: ${{ !inputs.dry_run }}
+        env:
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            # A tag left by a partial earlier attempt must not be assumed to
+            # name this commit: publishing under one that points elsewhere
+            # would mix packages built from two different sources.
+            at="$(git rev-parse "refs/tags/${tag}^{commit}")"
+            if [ "${at}" != "${GITHUB_SHA}" ]; then
+              echo "::error::${tag} already exists at ${at}, not ${GITHUB_SHA}."
+              echo "::error::Refusing to move a release tag or publish ${tag} from other source."
+              echo "::error::Re-run the workflow run that pushed ${tag} to finish this version."
+              exit 1
+            fi
+            echo "${tag} already exists at this commit"
+          else
+            git tag "${tag}"
+          fi
+
+          # The checkout keeps no credential, so the bot's token reaches git for
+          # these two calls only, in the remote's URL (never written to .git/config).
+          remote="https://x-access-token:${PUSH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --tags "${remote}" "${tag}" >/dev/null 2>&1; then
+            echo "${tag} already on origin"
+          else
+            git push "${remote}" "refs/tags/${tag}"
           fi
 
       # A trusted-publishing key is short-lived, so it is minted immediately
@@ -309,63 +403,21 @@ jobs:
             push "$f"
           done
 
-      # Finalization has to be resumable. Everything above it is already
-      # published and cannot be withdrawn, so a failure here must be fixable
-      # by re-running rather than leaving packages live with no tag and no
-      # release. Each action is conditional on its own absence: a re-run that
-      # finds the tag pushed moves on to the release, and one that finds both
-      # simply succeeds.
-      #
-      # The tag is pushed as devenvy-bot: GitHub refuses GITHUB_TOKEN a tag on a
-      # commit whose history changes workflow files ("refusing to allow a GitHub
-      # App to create or update workflow ... without `workflows` permission"),
-      # which left 9.0.2.400 published with no tag.
-      - id: app-token
-        if: ${{ !inputs.dry_run }}
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.DEVENVY_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.DEVENVY_BOT_PRIVATE_KEY }}
-          # pushing the release tag
-          permission-contents: write
-          permission-workflows: write
-      - name: Tag and create release
+      # Last, so the release only exists once every package is on the feed.
+      # Conditional on its own absence, so a re-run that finds it simply
+      # succeeds. --verify-tag: the tag was pushed above, and a release must
+      # never create one of its own at whatever main happens to be.
+      - name: Create the GitHub release
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          PUSH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ matrix.version }}
           UPSTREAM: ${{ matrix.upstream }}
         run: |
           set -euo pipefail
           tag="v${VERSION}"
-
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            # A tag left by a partial earlier attempt must not be assumed to
-            # name this commit: pushing one that points elsewhere would
-            # mislabel which source produced the published packages.
-            at="$(git rev-parse "refs/tags/${tag}")"
-            if [ "${at}" != "${GITHUB_SHA}" ]; then
-              echo "::error::${tag} already exists at ${at}, not ${GITHUB_SHA}."
-              echo "::error::Refusing to move a release tag."
-              exit 1
-            fi
-            echo "${tag} already exists at this commit"
-          else
-            git tag "${tag}"
-          fi
-
-          # The checkout keeps no credential, so the bot's token reaches git for
-          # these two calls only, in the remote's URL (never written to .git/config).
-          remote="https://x-access-token:${PUSH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --tags "${remote}" "${tag}" >/dev/null 2>&1; then
-            echo "${tag} already on origin"
-          else
-            git push "${remote}" "refs/tags/${tag}"
-          fi
-
           if gh release view "${tag}" >/dev/null 2>&1; then
             echo "release ${tag} already exists"
           else
-            gh release create "${tag}" --title "${tag}" --notes "FFmpeg ${UPSTREAM} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${UPSTREAM})."
+            gh release create "${tag}" --verify-tag --title "${tag}" --notes "FFmpeg ${UPSTREAM} repackaged from [devenvy/ffmpeg](https://github.com/devenvy/ffmpeg/releases/tag/${UPSTREAM})."
           fi

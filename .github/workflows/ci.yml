@@ -50,16 +50,31 @@ jobs:
         with:
           advanced-security: false # fail the job on findings instead of uploading SARIF
 
+  # The series come from versions.json, as in smoke-test.yml, so adding or
+  # dropping one there changes what CI packs with no edit here.
+  resolve:
+    name: Resolve series
+    runs-on: ubuntu-24.04
+    outputs:
+      series: ${{ steps.m.outputs.series }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: m
+        run: echo "series=$(jq -c '.series | keys' versions.json)" >> "$GITHUB_OUTPUT"
+
   # Packs a real subset on Linux and asserts the package layout. Linux matters:
   # Windows tar cannot create symlinks, so the duplicate-library bug the
   # normalization guards against does not even reproduce there.
   pack:
     name: Pack and verify (${{ matrix.series }})
+    needs: resolve
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        series: ["9.0", "8.1"]
+        series: ${{ fromJson(needs.resolve.outputs.series) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,8 +114,10 @@ jobs:
           UPSTREAM_TAG: ${{ steps.tag.outputs.tag }}
         run: CELLS="lgplv2" bash scripts/pack.sh "${UPSTREAM_TAG}" 0.0.0-ci --output ./nupkgs --phase meta
 
+      # Complete for the one cell packed in full (lgplv3 above is a single
+      # platform, for the import check only).
       - name: Verify package contents
-        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete
+        run: bash scripts/verify-packages.sh ./nupkgs --expect-complete --cells LGPLv2
 
       - name: Verify consumer restore and build
         run: bash scripts/verify-consumer.sh ./nupkgs 0.0.0-ci
@@ -116,7 +133,7 @@ jobs:
   # alone, so adding or renaming a job above never needs a ruleset change.
   result:
     if: always()
-    needs: [helper, lint, pack]
+    needs: [helper, lint, resolve, pack]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -125,9 +142,10 @@ jobs:
         env:
           HELPER: ${{ needs.helper.result }}
           LINT: ${{ needs.lint.result }}
+          RESOLVE: ${{ needs.resolve.result }}
           PACK: ${{ needs.pack.result }}
         run: |
-          for result in "$HELPER" "$LINT" "$PACK"; do test "$result" = "success"; done
+          for result in "$HELPER" "$LINT" "$RESOLVE" "$PACK"; do test "$result" = "success"; done
 
   # Dependabot's PRs merge themselves once the required check passes, as devenvy-bot (org variable
   # DEVENVY_BOT_CLIENT_ID, org secret DEVENVY_BOT_PRIVATE_KEY, both also Dependabot secrets), as in the

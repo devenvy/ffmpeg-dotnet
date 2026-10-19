@@ -37,6 +37,48 @@ def check(ok, message):
     if not ok:
         failures.append(message)
 
+# The shipped inventory comes from gen-nuspec.sh, which every package is
+# generated from: its ALL_RIDS is the platform list each .All depends on, and
+# its SPDX table names every licence cell.
+#
+# The comparison is against that canonical list, not against whatever happens
+# to sit in the directory. CI packs a handful of representative RIDs on
+# purpose, so "listed but not packed" is the normal case there and asserting
+# the two sets match fails every correct CI run. Reading the canonical list
+# instead keeps the check meaningful on a subset feed and makes it stricter on
+# a full one: a .All that drifts from the shipped platform set is caught even
+# when the drift happens to agree with what was packed.
+gen = (pathlib.Path(__file__).parent / "gen-nuspec.sh").read_text(encoding="utf-8")
+canonical = set(re.search(r"ALL_RIDS=\((.*?)\)", gen, re.S).group(1).split())
+cells = set(re.findall(r"\[(\w+)\]=", re.search(r"declare -A SPDX=\((.*?)\)", gen, re.S).group(1)))
+if not canonical or not cells:
+    sys.exit("FAIL: could not parse ALL_RIDS and the SPDX cells out of gen-nuspec.sh")
+
+HELPER = "DevEnvy.FFmpeg.Binaries"
+
+# --expect-complete is passed by the release workflow, where a short feed means
+# a platform silently failed to pack rather than a deliberate subset. --cells
+# narrows it to the cells a run packs in full (CI packs one).
+args = sys.argv[2:]
+expect_complete = "--expect-complete" in args
+if "--cells" in args:
+    expect_cells = set(args[args.index("--cells") + 1].split(","))
+    if expect_cells - cells:
+        sys.exit(f"FAIL: --cells names unknown cell(s) {sorted(expect_cells - cells)}; known {sorted(cells)}")
+else:
+    expect_cells = cells
+
+def kind_of(pkg_id):
+    """helper, meta or runtime by package id; None for anything unrecognised."""
+    if pkg_id == HELPER:
+        return "helper"
+    m = re.fullmatch(re.escape(HELPER) + r"\.(\w+)\.Runtime\.(.+)", pkg_id)
+    if not m or m.group(1) not in cells:
+        return None
+    if m.group(2) == "All":
+        return "meta"
+    return "runtime" if m.group(2) in canonical else None
+
 print(f"Verifying {len(packages)} package(s) in {directory}\n")
 
 for pkg in packages:
@@ -49,6 +91,9 @@ for pkg in packages:
     pkg_id = re.search(r"<id>([^<]+)</id>", z.read(nuspec).decode("utf-8-sig")).group(1)
     all_ids.add(pkg_id)
     payload = [n for n in names if n.startswith("runtimes/") or n.startswith("frameworks/")]
+    kind = kind_of(pkg_id)
+    check(kind is not None,
+          f"{name}: {pkg_id} is not the helper, a .All meta or a runtime package for a known cell and RID")
 
     # Symlinks packed verbatim triple a runtime package's size, and the failure
     # is invisible: the package works, it is just 3x larger than it should be.
@@ -138,11 +183,16 @@ for pkg in packages:
           f"{name}: {NOTICES} outside the package root would be copied into consumer output: {misplaced[:2]}")
 
     # These are file containers. A stray compiled assembly means IncludeBuildOutput leaked.
-    if payload:
+    # Keyed on the id rather than on finding a payload, so an empty runtime
+    # package fails here instead of skipping every check meant for it.
+    if kind == "runtime" or payload:
         check(not any(n.startswith("lib/") and n.endswith(".dll") for n in names),
               f"{name}: contains a lib/*.dll — IncludeBuildOutput leaked into a native package")
         check(NOTICES in names, f"{name}: ships no {NOTICES} at the package root")
+    if kind == "runtime":
         check(bool(payload), f"{name}: has no native payload at all")
+    elif kind == "helper":
+        check(not payload, f"{name}: the helper should carry no native payload")
 
     if payload and "frameworks/" not in "".join(payload):
         rid = pkg_id.rsplit(".", 1)[1]
@@ -200,23 +250,6 @@ for pkg in packages:
 
 # Every packed platform must be reachable through its variant's .All, or a
 # RID-less consumer silently loses one.
-#
-# The comparison is against gen-nuspec.sh's canonical RID list, not against
-# whatever happens to sit in the directory. CI packs a handful of representative
-# RIDs on purpose, so "listed but not packed" is the normal case there and
-# asserting the two sets match fails every correct CI run. Reading the canonical
-# list instead keeps the check meaningful on a subset feed and makes it stricter
-# on a full one: a .All that drifts from the shipped platform set is caught even
-# when the drift happens to agree with what was packed.
-gen = (pathlib.Path(__file__).parent / "gen-nuspec.sh").read_text(encoding="utf-8")
-canonical = set(re.search(r"ALL_RIDS=\((.*?)\)", gen, re.S).group(1).split())
-if not canonical:
-    failures.append("could not parse ALL_RIDS out of gen-nuspec.sh")
-
-# --expect-complete is passed by the release workflow, where a short feed means
-# a platform silently failed to pack rather than a deliberate subset.
-expect_complete = "--expect-complete" in sys.argv[2:]
-
 for meta_id, listed in all_metas.items():
     variant = meta_id.split(".")[-3]
     prefix = f"DevEnvy.FFmpeg.Binaries.{variant}.Runtime."
@@ -232,12 +265,21 @@ for meta_id, listed in all_metas.items():
     check(not orphaned,
           f"{meta_id}: packed but unreachable through .All: {sorted(orphaned)}")
 
-    if expect_complete:
-        check(not (canonical - packed),
-              f"{meta_id}: release feed is missing platforms: {sorted(canonical - packed)}")
-    elif canonical - packed:
+    if not expect_complete and canonical - packed:
         print(f"  note: {variant} feed is a subset, "
               f"{len(packed)}/{len(canonical)} platforms packed")
+
+# A complete feed is checked against the inventory it should hold, not only
+# against the metas that happen to be in it: a cell that failed to pack at all
+# brings no .All with it, and the per-meta loop above would never look for it.
+if expect_complete:
+    expected = {HELPER}
+    for c in expect_cells:
+        expected.add(f"{HELPER}.{c}.Runtime.All")
+        expected.update(f"{HELPER}.{c}.Runtime.{r}" for r in canonical)
+    missing = expected - all_ids
+    check(not missing,
+          f"feed is missing {len(missing)} expected package(s): {sorted(missing)[:6]}")
 
 print()
 if failures:
