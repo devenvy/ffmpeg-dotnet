@@ -4,6 +4,10 @@ Prebuilt FFmpeg native binaries from [`devenvy/ffmpeg`](https://github.com/deven
 repackaged for .NET. This repository does **not** build FFmpeg — it downloads the upstream
 release assets, verifies them against the release's `SHA256SUMS`, and packs them.
 
+Platform features follow the [upstream build profiles and installation notes](https://github.com/devenvy/ffmpeg/blob/main/docs/install.md).
+Bundled shared dependencies stay beside FFmpeg in the runtime packages. Hardware acceleration also needs compatible
+drivers on the recipient's machine.
+
 ## Which package
 
 Pick a license variant, then reference the platform you build for.
