@@ -124,6 +124,13 @@ To get a clearer error, validate first:
 
 With the build-machine fallback, check `$(FFmpegRid)` in place of `$(RuntimeIdentifier)`.
 
+**Publishing for Linux or macOS from Windows leaves `ffmpeg` without its execute bit.** A
+`.nupkg` stores no Unix permissions, so the packages' targets run `chmod +x` on `ffmpeg` and
+`ffprobe` after build and publish, but only on a Unix build machine. If you publish with
+`-r linux-x64` on Windows and package the output there (a tarball, a `.deb`), set the bit while
+packaging, or `Process.Start` fails with permission denied. A Docker image built from that
+output is fine: Docker marks files copied from a Windows build context executable.
+
 ### Trimming a RID-less build
 
 `Runtime.All` copies every platform into `bin/`. To narrow the copy without giving up
