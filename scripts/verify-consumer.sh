@@ -89,7 +89,12 @@ got="$(restored_platforms "${WORK}/rid")"
   || fail "expected only ${RID_UNDER_TEST}, restored '${got}'"
 find "${WORK}/rid/bin" -name 'libavcodec.so.*' -o -name 'avcodec-*.dll' | grep -q . \
   || fail "no avcodec reached bin/ for ${RID_UNDER_TEST}"
-echo "  ${RID_UNDER_TEST} only, avcodec present"
+case "${RID_UNDER_TEST}" in
+  android-*) ;;   # Android packages carry the notices at the package root only
+  *) find "${WORK}/rid/bin" -name 'FFmpeg-THIRD-PARTY-NOTICES.txt' | grep -q . \
+       || fail "FFmpeg-THIRD-PARTY-NOTICES.txt did not reach bin/ for ${RID_UNDER_TEST}" ;;
+esac
+echo "  ${RID_UNDER_TEST} only, avcodec and licence notices present"
 
 # Only meaningful when the whole platform set is in the feed, which is true on a
 # release run and not on a CI subset run.

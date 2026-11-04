@@ -269,11 +269,11 @@ if [[ "${PHASE}" == "all" || "${PHASE}" == "base" ]]; then
 
       # Upstream puts one THIRD-PARTY-NOTICES.txt at the archive root: the
       # effective licence, FFmpeg's build and source details, and every bundled
-      # library's licence text. It is packed at the package root, never under
-      # runtimes/{rid}/native/. Anything beneath native/ is a native asset to
-      # NuGet, so a notices file left there is copied into every consumer's
-      # build and publish output and collides across packages on a flattened
-      # publish. A missing file fails the pack: shipping binaries without their
+      # library's licence text. It is staged beside native/, not in it:
+      # Runtime.csproj packs it at the package root and, for desktop RIDs, as
+      # runtimes/{rid}/native/FFmpeg-THIRD-PARTY-NOTICES.txt so NuGet copies it
+      # into the consumer's output under a name that can't collide with the
+      # app's own. A missing file fails the pack: shipping binaries without their
       # licence texts is not a smaller package, it is a non-compliant one.
       if [[ ! -f "${work}/${NOTICES}" ]]; then
         echo "ERROR: ${tarball} has no ${NOTICES}" >&2

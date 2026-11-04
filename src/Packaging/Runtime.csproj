@@ -37,9 +37,23 @@
 
   <ItemGroup>
     <None Include="$(StagingDir)native/**" PackagePath="runtimes/$(Rid)/native/" Pack="true" />
-    <!-- Notices go at the package root. Anything under runtimes/**/native is a
-         native asset to NuGet and would be copied into every consumer's output. -->
+    <!-- Notices go at the package root, where anyone inspecting the package finds them. -->
     <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="" Pack="true" />
+  </ItemGroup>
+
+  <!-- Desktop packages also carry a copy beside the binaries. Anything under
+       runtimes/{rid}/native is a native asset, so NuGet copies it into the
+       consumer's build and publish output with no step on their side: nested
+       under runtimes/{rid}/native/ for a RID-less build, flat beside the app
+       for a RID-specific one. The FFmpeg- prefix keeps the flat copy from
+       colliding with the app's own THIRD-PARTY-NOTICES.txt.
+       Not Android: its SDK treats runtimes/android-*/native as libraries to
+       put in the APK, and an Android app shows licences its own way. -->
+  <ItemGroup Condition="!$(Rid.StartsWith('android-'))">
+    <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="runtimes/$(Rid)/native/FFmpeg-THIRD-PARTY-NOTICES.txt" Pack="true" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
   </ItemGroup>

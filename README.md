@@ -20,8 +20,11 @@ Pick a license variant, then reference the platform you build for.
 | `GPLv3`  | GPL-3.0 |
 
 Every platform package carries upstream's `THIRD-PARTY-NOTICES.txt` at its root: the effective
-licence, FFmpeg's build and source details, and every bundled library's licence text. NuGet does
-not copy it into your build or publish output; distributing it with your app is up to you.
+licence, FFmpeg's build and source details, and every bundled library's licence text. The desktop
+packages (Windows, Linux, macOS) also ship it beside the binaries as
+`FFmpeg-THIRD-PARTY-NOTICES.txt`, so it lands in your build and publish output with no extra step:
+next to your app for a RID-specific build, under `runtimes/{rid}/native/` otherwise. Android and
+Apple packages don't copy it; include it in your app's licence screen yourself.
 
 ```
 DevEnvy.FFmpeg.Binaries                        path helper, no binaries
@@ -54,7 +57,33 @@ conditions covers every platform — there is no per-RID block to maintain.
 If you only ever ship one platform, skip the conditions and reference
 `...Runtime.linux-x64` directly.
 
-### Two things that will bite
+### Or: fall back to the build machine's platform
+
+If a RID-less build only ever needs to run where it was built (local dev, tests in CI),
+use the SDK's own platform instead of `Runtime.All`:
+
+```xml
+<PropertyGroup>
+  <FFmpegRid>$(RuntimeIdentifier)</FFmpegRid>
+  <FFmpegRid Condition="'$(FFmpegRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</FFmpegRid>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(FFmpegRid)" Version="9.0.1.700" />
+</ItemGroup>
+```
+
+A RID-less `dotnet build` on Ubuntu then restores `Runtime.linux-x64` alone, and on Windows
+`Runtime.win-x64`. The output only runs on that kind of machine, so name the platform
+(`-r`) for anything you ship.
+
+> [!WARNING]
+> Use `NETCoreSdkPortableRuntimeIdentifier`, **not** `NETCoreSdkRuntimeIdentifier`. They agree
+> on Windows, macOS and Microsoft's Linux SDK builds, so the wrong one passes on most machines and
+> in CI. But an SDK installed from a distro's own packages (`apt install dotnet-sdk-10.0` on
+> Ubuntu) sets `NETCoreSdkRuntimeIdentifier` to a distro RID such as `ubuntu.24.04-x64`, and
+> restore fails with `NU1101: Unable to find package ...Runtime.ubuntu.24.04-x64`.
+
+### Things that will bite
 
 **Use `-p:RuntimeIdentifier=` for a standalone `restore`.** A bare `-r` on
 `dotnet restore` populates NuGet's RID graph but leaves `$(RuntimeIdentifier)` empty
@@ -67,6 +96,12 @@ dotnet restore -p:RuntimeIdentifier=osx-arm64   # correct
 ```
 
 `dotnet build -r` and `dotnet publish -r` are fine — they set the property.
+
+**Falling back to the SDK's RID needs the portable one.** If you use the
+[build-machine fallback](#or-fall-back-to-the-build-machines-platform), take
+`$(NETCoreSdkPortableRuntimeIdentifier)`. `$(NETCoreSdkRuntimeIdentifier)` works almost
+everywhere, then fails on a developer machine with Ubuntu's own `dotnet` package, where it is
+`ubuntu.24.04-x64`.
 
 **An unsupported RID fails on a package name you never typed**, because the id is
 built from `$(RuntimeIdentifier)`:
@@ -86,6 +121,8 @@ To get a clearer error, validate first:
   <Error Text="FFmpeg binaries are not published for '$(RuntimeIdentifier)'. Supported: $(FFmpegSupportedRids)." />
 </Target>
 ```
+
+With the build-machine fallback, check `$(FFmpegRid)` in place of `$(RuntimeIdentifier)`.
 
 ### Trimming a RID-less build
 

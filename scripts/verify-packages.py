@@ -24,6 +24,8 @@ _pe, _SYSTEM_DLL = _audit.pe, _audit.SYSTEM_DLL
 # Upstream's single notices file: the effective licence, FFmpeg's build and
 # source details, and every bundled library's licence text.
 NOTICES = "THIRD-PARTY-NOTICES.txt"
+# The copy desktop packages carry under runtimes/{rid}/native/.
+NATIVE_NOTICES = "FFmpeg-THIRD-PARTY-NOTICES.txt"
 
 directory = pathlib.Path(sys.argv[1])
 packages = sorted(directory.glob("*.nupkg"))
@@ -174,13 +176,26 @@ for pkg in packages:
     bad = [n for n in names if doubled(n)]
     check(not bad, f"{name}: doubled path segments (PackagePath/%(RecursiveDir) bug): {bad[:2]}")
 
-    # Anything under runtimes/**/native is a native asset NuGet copies into the
-    # consumer's output, and frameworks/ is linked into the app. Licence text
-    # belongs at the package root instead, once.
+    # Under its plain name the notices file belongs at the package root only:
+    # anything under runtimes/**/native lands flat beside a RID-specific app,
+    # where THIRD-PARTY-NOTICES.txt would collide with the app's own.
     misplaced = [n for n in names
                  if n.rsplit("/", 1)[-1] == NOTICES and n != NOTICES]
     check(not misplaced,
-          f"{name}: {NOTICES} outside the package root would be copied into consumer output: {misplaced[:2]}")
+          f"{name}: {NOTICES} outside the package root would collide in consumer output: {misplaced[:2]}")
+
+    # Desktop packages carry a renamed copy beside the binaries so NuGet
+    # delivers it into the consumer's output; it must match the root copy.
+    if kind == "runtime" and payload and "frameworks/" not in "".join(payload):
+        rid = pkg_id.rsplit(".", 1)[1]
+        shipped = f"runtimes/{rid}/native/{NATIVE_NOTICES}"
+        if rid.startswith("android-"):
+            check(shipped not in names, f"{name}: Android packages must not ship {shipped}")
+        else:
+            check(shipped in names, f"{name}: ships no {shipped}, so consumers' output gets no licence text")
+            if shipped in names and NOTICES in names:
+                check(z.read(shipped) == z.read(NOTICES),
+                      f"{name}: {shipped} differs from the root {NOTICES}")
 
     # These are file containers. A stray compiled assembly means IncludeBuildOutput leaked.
     # Keyed on the id rather than on finding a payload, so an empty runtime
