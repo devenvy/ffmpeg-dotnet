@@ -15,6 +15,7 @@
     <!-- Without this, Authors defaults to the project name and the gallery
          permanently shows "Runtime" / "Apple" as the package author. -->
     <Authors>DevEnvy</Authors>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
@@ -40,6 +41,7 @@
     <None Include="$(StagingDir)frameworks/**" PackagePath="frameworks/" Pack="true" />
     <!-- At the package root, as in Runtime.csproj: never copied into a consumer's app. -->
     <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="" Pack="true" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" PackagePath="" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="build/$(PackageId).targets" Pack="true" />
     <None Include="$(TargetsFile)" PackagePath="buildTransitive/$(PackageId).targets" Pack="true" />
   </ItemGroup>

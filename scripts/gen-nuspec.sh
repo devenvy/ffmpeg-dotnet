@@ -107,6 +107,7 @@ TARGETSEOF
       echo '    <repository type="git" url="https://github.com/devenvy/ffmpeg-dotnet" />'
       echo '    <requireLicenseAcceptance>false</requireLicenseAcceptance>'
       echo '    <tags>ffmpeg native media video audio</tags>'
+      echo '    <readme>README.md</readme>'
       echo "    <description>FFmpeg ${FFMPEG_VERSION} ${CELL} native binaries for every supported platform. Reference this when the build sets no RuntimeIdentifier; for a single-platform restore reference DevEnvy.FFmpeg.Binaries.${CELL}.Runtime.&lt;rid&gt; instead.</description>"
       echo '    <dependencies>'
       echo '      <group targetFramework="netstandard2.0">'
@@ -118,6 +119,7 @@ TARGETSEOF
       echo '    </dependencies>'
       echo '  </metadata>'
       echo '  <files>'
+      echo '    <file src="src/Packaging/README.md" target="README.md" />'
       echo "    <file src=\".nuspec-gen/${ID}.targets\" target=\"buildTransitive/${ID}.targets\" />"
       echo "    <file src=\".nuspec-gen/${ID}.targets\" target=\"build/${ID}.targets\" />"
       echo '  </files>'
