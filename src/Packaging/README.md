@@ -13,12 +13,20 @@ and use it everywhere.
 
 ```xml
 <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
-  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.All" Version="9.0.1.500" />
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.All" Version="VERSION" />
 </ItemGroup>
 <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
-  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(RuntimeIdentifier)" Version="9.0.1.500" />
+  <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(RuntimeIdentifier)" Version="VERSION" />
 </ItemGroup>
 ```
+
+Replace `VERSION` with this package's version, and keep every DevEnvy.FFmpeg package on the same one.
+
+To restore only the build machine's platform when no `RuntimeIdentifier` is set, fall back to
+`$(NETCoreSdkPortableRuntimeIdentifier)`. Do not use `$(NETCoreSdkRuntimeIdentifier)`: on an SDK from a
+Linux distro's own packages (Ubuntu's `apt install dotnet-sdk-10.0`) it is a distro RID such as
+`ubuntu.24.04-x64`, and restore fails with NU1101. See
+[the build-machine fallback](https://github.com/devenvy/ffmpeg-dotnet#or-fall-back-to-the-build-machines-platform).
 
 ```csharp
 var dir = FFmpegBinaries.GetLibraryPath();
