@@ -16,6 +16,7 @@
     <!-- Without this, Authors defaults to the project name and the gallery
          permanently shows "Runtime" / "Apple" as the package author. -->
     <Authors>DevEnvy</Authors>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
@@ -39,6 +40,7 @@
     <None Include="$(StagingDir)native/**" PackagePath="runtimes/$(Rid)/native/" Pack="true" />
     <!-- Notices go at the package root, where anyone inspecting the package finds them. -->
     <None Include="$(StagingDir)THIRD-PARTY-NOTICES.txt" PackagePath="" Pack="true" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" PackagePath="" Pack="true" />
   </ItemGroup>
 
   <!-- Desktop packages also carry a copy beside the binaries. Anything under

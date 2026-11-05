@@ -197,6 +197,14 @@ for pkg in packages:
                 check(z.read(shipped) == z.read(NOTICES),
                       f"{name}: {shipped} differs from the root {NOTICES}")
 
+    # nuget.org shows the readme on the package page and warns on push without
+    # one. Every package ships it at the root and names it in the nuspec.
+    nuspec_text = z.read(nuspec).decode("utf-8-sig")
+    readme = re.search(r"<readme>([^<]+)</readme>", nuspec_text)
+    check(readme is not None, f"{name}: nuspec declares no <readme>")
+    if readme:
+        check(readme.group(1) in names, f"{name}: <readme> names {readme.group(1)}, which is not in the package")
+
     # These are file containers. A stray compiled assembly means IncludeBuildOutput leaked.
     # Keyed on the id rather than on finding a payload, so an empty runtime
     # package fails here instead of skipping every check meant for it.
