@@ -126,6 +126,15 @@ jobs:
                   echo "::error::could not look up release v${version} for ${series}: ${out}"
                   exit 1
                 fi
+                # Only the run at the tagged commit may finish it (the release
+                # job refuses any other source). A later merge's run skips it
+                # with a warning instead of failing on main: finishing it is a
+                # re-run of the run that tagged it.
+                at="$(git rev-parse -q --verify "refs/tags/v${version}^{commit}" || true)"
+                if [ -n "${at}" ] && [ "${at}" != "${GITHUB_SHA}" ]; then
+                  echo "::warning::${series}: v${version} is tagged at ${at} with no GitHub release; re-run the workflow run for ${at} to finish it. Skipping it here."
+                  continue
+                fi
                 echo "::warning::${series}: v${version} is tagged but has no GitHub release; resuming it"
                 ;;
               *) echo "::error::compute-version failed for ${series} (${tag}), exit ${rc}"

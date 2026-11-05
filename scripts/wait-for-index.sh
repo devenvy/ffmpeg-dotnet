@@ -10,12 +10,15 @@ set -euo pipefail
 # is not availability: nuget.org validates and indexes asynchronously, usually
 # within minutes. Pushing the metas before that leaves a window where a consumer
 # resolves a meta whose dependencies cannot be found.
+#
+# A release pushes about 60 payloads at once, and nuget.org has taken more than
+# 30 minutes to index them all, so the default wait is two hours.
 # ==============================================================================
 
 VERSION="${1:?Usage: wait-for-index.sh <version> <nupkg-dir>}"
 DIR="${2:?Usage: wait-for-index.sh <version> <nupkg-dir>}"
 
-DEADLINE=$(( $(date +%s) + ${INDEX_TIMEOUT_SECONDS:-1800} ))
+DEADLINE=$(( $(date +%s) + ${INDEX_TIMEOUT_SECONDS:-7200} ))
 INTERVAL="${INDEX_POLL_SECONDS:-20}"
 
 ids=()
