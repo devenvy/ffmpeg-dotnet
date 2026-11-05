@@ -124,7 +124,8 @@ jobs:
         with:
           name: pkg-${{ matrix.series }}-${{ matrix.artifact }}
           path: out/*.nupkg
-          retention-days: 1
+          # a week, not a day: a macOS job can wait hours for a runner, and re-running it later needs these
+          retention-days: 7
 
   pack-meta:
     needs: resolve
@@ -146,7 +147,8 @@ jobs:
         with:
           name: pkg-meta-${{ matrix.series }}
           path: out/*.nupkg
-          retention-days: 1
+          # a week, not a day: a macOS job can wait hours for a runner, and re-running it later needs these
+          retention-days: 7
 
   # Native hosted runners: the binary under test is executed on the hardware and
   # libc it was built for.
