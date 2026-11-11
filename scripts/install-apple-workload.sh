@@ -35,8 +35,11 @@ sdk_of() {
     | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p'
 }
 
-# newest first, as `dotnet workload search version` lists them
-for set in $(dotnet workload search version --format json | jq -r '.[].workloadVersion' | tr -d '\r'); do
+# newest first, as `dotnet workload search version` lists them. It lists only
+# the 5 newest sets unless told otherwise, and the newest one a lagging Xcode
+# can build with may be further back (SDK 10.0.404 pushed 10.0.401, the last
+# with an Xcode 26 SDK, off the default list), so ask for the whole band.
+for set in $(dotnet workload search version --take 100 --format json | jq -r '.[].workloadVersion' | tr -d '\r'); do
   sdk="$(sdk_of "${set}")"
   [ -n "${sdk}" ] || continue
   # this set's Apple SDK is no newer than Xcode: the lower of the two is the SDK
