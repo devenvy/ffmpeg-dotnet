@@ -7,20 +7,11 @@ name: Smoke test
 # publishes); this tests the packaging: restore, where each platform's native
 # libraries land, and that an app loads them.
 #
-# Runs on a pull request that changes what it tests, weekly (a runner image or
-# .NET workload change can break it with no change here), and from release.yml
+# CI runs it on a pull request that changes what it tests, and its result is
+# part of CI's required check. It also runs weekly (a runner image or .NET
+# workload change can break it with no change here), and from release.yml
 # before anything is published.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - versions.json
-      - src/**
-      - scripts/**
-      - tests/**
-      - Directory.Build.props
-      - "*.slnx"
-      - .github/workflows/smoke-test.yml
   workflow_call:
   workflow_dispatch:
   schedule:

@@ -35,11 +35,22 @@ sdk_of() {
     | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p'
 }
 
-# newest first, as `dotnet workload search version` lists them. It lists only
-# the 5 newest sets unless told otherwise, and the newest one a lagging Xcode
-# can build with may be further back (SDK 10.0.404 pushed 10.0.401, the last
-# with an Xcode 26 SDK, off the default list), so ask for the whole band.
-for set in $(dotnet workload search version --take 100 --format json | jq -r '.[].workloadVersion' | tr -d '\r'); do
+# Every workload set in this SDK band, newest first. The CLI lists only the 5
+# newest unless --take says otherwise, and the set a lagging Xcode can build
+# with may be further back: SDK 10.0.404 pushed 10.0.401, the last set with an
+# Xcode 26 SDK, off the default list, and every Apple build failed. Ask for far
+# more than a band holds, and treat a full page as possibly cut short rather
+# than silently missing the set needed. scripts/test-install-apple-workload.sh
+# covers the selection.
+TAKE=1000
+sets="$(dotnet workload search version --take "${TAKE}" --format json | jq -r '.[].workloadVersion' | tr -d '\r')"
+count="$(printf '%s\n' "${sets}" | grep -c . || true)"
+test "${count}" -gt 0 || { echo "FAIL: dotnet listed no workload sets for this SDK band" >&2; exit 1; }
+test "${count}" -lt "${TAKE}" \
+  || { echo "FAIL: dotnet listed ${count} workload sets, the most asked for; the list may be cut short" >&2; exit 1; }
+echo "${count} workload sets in this SDK band"
+
+for set in ${sets}; do
   sdk="$(sdk_of "${set}")"
   [ -n "${sdk}" ] || continue
   # this set's Apple SDK is no newer than Xcode: the lower of the two is the SDK

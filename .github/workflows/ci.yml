@@ -36,6 +36,8 @@ jobs:
       - run: shellcheck scripts/*.sh
       - name: Shared-library payload verifier tests
         run: python3 -B scripts/test-native-payload.py
+      - name: Apple workload selection tests
+        run: bash scripts/test-install-apple-workload.sh
 
       # A malformed workflow file fails silently: GitHub reports "workflow file
       # issue" with no job, and a scheduled workflow would not surface it until
@@ -141,11 +143,51 @@ jobs:
           path: nupkgs/*.nupkg
           retention-days: 7
 
+  # Whether this pull request changes anything the smoke tests cover. They run
+  # real apps on every platform (macOS, iOS, Android and Windows runners
+  # included), so they run only when something they test changed.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      smoke: ${{ steps.c.outputs.smoke }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: c
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Run by hand: always smoke test.
+          if [ "${EVENT}" != pull_request ]; then echo "smoke=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # HEAD is the pull request merged into main, so its first parent is main.
+          git diff --name-only HEAD^1 HEAD | tee changed.txt
+          if grep -qE '^(versions\.json|src/|scripts/|tests/|Directory\.Build\.props|[^/]+\.slnx|\.github/workflows/(ci|smoke-test)\.yml)' changed.txt; then
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "smoke=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The smoke tests, as part of CI: their result decides `result`, so a pull
+  # request (an FFmpeg bump included, which merges itself) cannot merge while
+  # any platform fails. They once ran as a separate workflow that no required
+  # check covered, and a bump merged with every iOS and Mac Catalyst job red.
+  smoke:
+    needs: changes
+    if: needs.changes.outputs.smoke == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/smoke-test.yml
+
   # The single required status check: the branch ruleset requires this job
   # alone, so adding or renaming a job above never needs a ruleset change.
   result:
     if: always()
-    needs: [helper, lint, resolve, pack]
+    needs: [helper, lint, resolve, pack, changes, smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -156,8 +198,17 @@ jobs:
           LINT: ${{ needs.lint.result }}
           RESOLVE: ${{ needs.resolve.result }}
           PACK: ${{ needs.pack.result }}
+          CHANGES: ${{ needs.changes.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          SMOKE_NEEDED: ${{ needs.changes.outputs.smoke }}
         run: |
-          for result in "$HELPER" "$LINT" "$RESOLVE" "$PACK"; do test "$result" = "success"; done
+          for result in "$HELPER" "$LINT" "$RESOLVE" "$PACK" "$CHANGES"; do test "$result" = "success"; done
+          # skipped only when nothing the smoke tests cover changed
+          if [ "$SMOKE_NEEDED" = "false" ]; then
+            test "$SMOKE" = "skipped" || test "$SMOKE" = "success"
+          else
+            test "$SMOKE" = "success"
+          fi
 
   # Dependabot's PRs merge themselves once the required check passes, as devenvy-bot (org variable
   # DEVENVY_BOT_CLIENT_ID, org secret DEVENVY_BOT_PRIVATE_KEY, both also Dependabot secrets), as in the
